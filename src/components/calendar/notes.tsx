@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useApp } from '../AppProvider';
-import { DateField, Field, Icon, Modal, ModalActions, Picker } from '../ui';
+import { Avatar, DateField, Field, Icon, Modal, ModalActions, Picker } from '../ui';
 import { day, isoDate } from '@/lib/dates';
 import { canNoteFor, teamNoteTeams, personByName } from '@/lib/access';
 import { deleteEntry, deleteTeamNote, saveNote, saveTeamNote } from '@/server/actions/entries';
@@ -29,19 +29,18 @@ export function NotesPopup({ k, onClose, onEdit, onAdd }: { k: string; onClose: 
               <small className="np-by">
                 <Icon name="user" />
                 <span>
-                  von <b>{n.author || emp}</b>
+                  von <b>{n.author || emp}</b> · {f.fmtIsoDate(n.date)}
                 </span>
               </small>
               {can && (
                 <span className="np-actions">
-                  <button type="button" className="icon-btn" title="Bearbeiten" aria-label="Notiz bearbeiten" onClick={() => onEdit(n)}>
+                  <button type="button" className="btn small" onClick={() => onEdit(n)}>
                     <Icon name="edit" />
+                    Bearbeiten
                   </button>
                   <button
                     type="button"
-                    className="icon-btn danger"
-                    title="Löschen"
-                    aria-label="Notiz löschen"
+                    className="btn small ghost danger-text"
                     onClick={async () => {
                       if (await ask(`Notiz von ${emp} am ${f.fmtIsoDate(date)} wirklich löschen?`, 'Löschen')) {
                         await run(deleteEntry(n.id));
@@ -50,6 +49,7 @@ export function NotesPopup({ k, onClose, onEdit, onAdd }: { k: string; onClose: 
                     }}
                   >
                     <Icon name="trash" />
+                    Löschen
                   </button>
                 </span>
               )}
@@ -59,16 +59,19 @@ export function NotesPopup({ k, onClose, onEdit, onAdd }: { k: string; onClose: 
         {!list.length && <div className="empty-note">Keine Notizen.</div>}
       </div>
       {can && (
-        <div className="btn-row modal-actions wp-actions">
-          <span />
-          <span className="wp-actions-right">
-            <button type="button" className="btn primary" onClick={() => onAdd(emp, date)}>
-              <Icon name="plus" />
-              Notiz hinzufügen
-            </button>
-          </span>
-        </div>
+        <button type="button" className="note-add-field np-add" onClick={() => onAdd(emp, date)}>
+          <Icon name="plus" />
+          <span>Weitere Notiz hinzufügen</span>
+        </button>
       )}
+      <div className="btn-row modal-actions wp-actions">
+        <span />
+        <span className="wp-actions-right">
+          <button type="button" className="btn primary" onClick={onClose}>
+            Schließen
+          </button>
+        </span>
+      </div>
     </Modal>
   );
 }
@@ -116,10 +119,20 @@ export function NoteDialog({ note, date, forWho, onClose }: { note?: Entry; date
         />
       }
     >
-      {targets.length > 1 && (
+      {targets.length > 1 ? (
         <Field label="Für">
           <Picker value={who} onChange={setWho} options={targets.map((p) => ({ value: p.name, label: p.name + (p.id === user.id ? ' (ich)' : ''), pic: 'person' }))} />
         </Field>
+      ) : (
+        who && (
+          <Field label="Für">
+            <div className="note-self">
+              <Avatar name={who} color="var(--accent-color)" size={26} />
+              <b>{who}</b>
+              <small className="muted">nur bei dir selbst</small>
+            </div>
+          </Field>
+        )
       )}
       <Field label="Datum">
         <DateField value={d} required ariaLabel="Datum" onChange={setD} />

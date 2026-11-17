@@ -1,8 +1,8 @@
 'use client';
 /* Kontakte: Favoriten, Suche, Mitarbeiterliste (Admin), Mitarbeiter anlegen/bearbeiten/löschen */
-import { useMemo, useState, type CSSProperties } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useApp } from '../AppProvider';
-import { Avatar, Field, Heading, Icon, Modal, ModalActions, MultiPick, Picker, resizeImage } from '../ui';
+import { Avatar, Field, FilterDropdown, Heading, Icon, Modal, ModalActions, MultiPick, Picker, resizeImage } from '../ui';
 import { canEdit } from '@/lib/access';
 import { roleLabel, visibleRole } from '@/lib/permissions';
 import { downloadCsv } from '@/lib/export/csv';
@@ -188,6 +188,14 @@ export function Contacts() {
               </button>
             ))}
           </div>
+          <FilterDropdown
+            className="role-dd"
+            icon="filter"
+            active={role !== 'Alle'}
+            label={role === 'Alle' ? 'Alle Rollen' : roleLabel(role)}
+            options={([['Alle', data.staff.length] as [string, number], ...counts]).map(([r, c]) => ({ value: r, label: r === 'Alle' ? 'Alle Rollen' : roleLabel(r), on: role === r, small: c, cls: r === 'Alle' ? 'all' : '' }))}
+            onPick={setRole}
+          />
         </div>
       </section>
       {!listMode && !searching && (
@@ -198,7 +206,7 @@ export function Contacts() {
             </h2>
           </div>
           {favs.length ? (
-            <div className="contact-grid contact-fav-grid">{favs.map((id) => tile(data.staff.find((s) => s.id === id)!))}</div>
+            <FavCarousel ids={favs.filter((id) => data.staff.some((s) => s.id === id))} render={(id) => tile(data.staff.find((s) => s.id === id)!)} />
           ) : (
             <div className="contact-empty">
               <Icon name="star" />
@@ -428,5 +436,71 @@ function EmployeeDialog({ person, onClose }: { person: Person | null; onClose: (
         </Field>
       </div>
     </Modal>
+  );
+}
+
+/* Favoriten als Karussell wie bisher: je nach Bildschirmbreite 4×1, 3×2, 2×2 oder 1×2 Kacheln pro Seite */
+function favLayout() {
+  if (typeof window === 'undefined') return { cols: 4, rows: 1 };
+  const w = (q: string) => window.matchMedia(q).matches;
+  if (w('(max-width: 520px)')) return { cols: 1, rows: 2 };
+  if (w('(max-width: 860px)')) return { cols: 2, rows: 2 };
+  if (w('(max-width: 1360px)')) return { cols: 3, rows: 2 };
+  return { cols: 4, rows: 1 };
+}
+function FavCarousel({ ids, render }: { ids: string[]; render: (id: string) => ReactNode }) {
+  const [layout, setLayout] = useState({ cols: 4, rows: 1 });
+  const [page, setPage] = useState(0);
+  const x0 = useRef<number | null>(null);
+  useEffect(() => {
+    const upd = () => setLayout((l) => {
+      const n = favLayout();
+      return n.cols === l.cols && n.rows === l.rows ? l : n;
+    });
+    upd();
+    window.addEventListener('resize', upd);
+    return () => window.removeEventListener('resize', upd);
+  }, []);
+  const per = layout.cols * layout.rows,
+    pages = Math.max(1, Math.ceil(ids.length / per)),
+    pg = Math.min(Math.max(0, page), pages - 1),
+    nav = pages > 1;
+  const slice = ids.slice(pg * per, pg * per + per);
+  return (
+    <>
+      <div
+        className={`fav-carousel${nav ? ' has-nav' : ''}`}
+        onTouchStart={(e) => (x0.current = e.touches[0].clientX)}
+        onTouchEnd={(e) => {
+          if (x0.current === null || !nav) return;
+          const dx = e.changedTouches[0].clientX - x0.current;
+          x0.current = null;
+          if (Math.abs(dx) > 50) setPage(dx < 0 ? Math.min(pages - 1, pg + 1) : Math.max(0, pg - 1));
+        }}
+      >
+        {nav && (
+          <button type="button" className="fav-arrow prev" aria-label="Vorherige Favoriten" disabled={pg === 0} onClick={() => setPage(pg - 1)}>
+            <Icon name="chev" />
+          </button>
+        )}
+        <div className="contact-grid contact-fav-grid" style={{ gridTemplateColumns: `repeat(${layout.cols},minmax(0,1fr))`, gridTemplateRows: `repeat(${layout.rows},auto)` }}>
+          {slice.map((id) => (
+            <Fragment key={id}>{render(id)}</Fragment>
+          ))}
+        </div>
+        {nav && (
+          <button type="button" className="fav-arrow next" aria-label="Weitere Favoriten" disabled={pg >= pages - 1} onClick={() => setPage(pg + 1)}>
+            <Icon name="chev" />
+          </button>
+        )}
+      </div>
+      {nav && (
+        <div className="fav-dots" aria-label={`Seite ${pg + 1} von ${pages}`}>
+          {Array.from({ length: pages }, (_, k) => (
+            <button key={k} type="button" className={`fav-dot${k === pg ? ' on' : ''}`} aria-label={`Seite ${k + 1}`} onClick={() => setPage(k)} />
+          ))}
+        </div>
+      )}
+    </>
   );
 }

@@ -2,7 +2,7 @@
 /* Bereitschaft verwalten: Bereitschaftszeiten (nur Admin) und Bereitschaftsfarben je Team */
 import { useState, type CSSProperties } from 'react';
 import { useApp } from '../AppProvider';
-import { ColorChoice, Field, Heading, Icon, Meter, Modal, ModalActions, MultiPick, Picker, TimeRange } from '../ui';
+import { ColorChoice, Field, Heading, Icon, Meter, Modal, ModalActions, MultiPick, Picker, TeamColorChoice, TimeRange } from '../ui';
 import { durationHours, fmtHours, hoursOf, WD_SHORT } from '@/lib/dates';
 import {
   isVariableStandby,
@@ -357,7 +357,7 @@ function StandbyColorDialog({ team, onClose, onSave }: { team: Team; onClose: ()
       footer={<ModalActions onCancel={onClose} />}
     >
       <Field label="Farbe">
-        <ColorChoice value={c} onChange={setC} swatches={STANDBY_COLORS} />
+        <TeamColorChoice value={c} onChange={setC} swatches={STANDBY_COLORS} />
       </Field>
       <Field label="Vorschau im Kalender">
         <div className="sb-color-preview">

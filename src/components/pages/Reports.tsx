@@ -1,11 +1,10 @@
 'use client';
 /* Berichte / Export: Filter, Kennzahlen, Einträge-Tabelle, Export-Zentrale (PDF / Excel / CSV) */
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../AppProvider';
-import { DateField, Heading, Icon, TeamFilter } from '../ui';
+import { Avatar, DateField, Dot, FilterDropdown, Heading, Icon, TeamFilter } from '../ui';
 import { addDays, day, durationHours, isoDate, weekStart } from '@/lib/dates';
-import { kindLabel, netHours, tRange } from '@/lib/entries';
-import { KIND_HEX, KIND_LIGHT } from '@/lib/export/formats';
+import { isVariableStandby, kindLabel, netHours, tRange } from '@/lib/entries';
 import { exportReports, renderReport } from '@/lib/export/reports';
 import { saveFile } from '@/lib/export/csv';
 import { canEdit, currentUserTeamNames } from '@/lib/access';
@@ -151,6 +150,19 @@ export function Reports() {
             </button>
           ))}
         </span>
+        <FilterDropdown
+          className="kind-dd"
+          icon="filter"
+          multi
+          active={kinds.length < KINDS.length}
+          label={kinds.length === KINDS.length ? 'Alle Arten' : kinds.join(', ')}
+          options={KINDS.map((k) => ({ value: k, label: k, on: kinds.includes(k) }))}
+          onPick={(k) => {
+            const next = kinds.includes(k) ? kinds.filter((x) => x !== k) : [...kinds, k];
+            setKinds(next.length ? next : [k]);
+            setPage(0);
+          }}
+        />
       </section>
       <div className="stats">
         <div className="stat-card">
@@ -224,9 +236,22 @@ export function Reports() {
             ) : (
               <>
                 <b>Einträge</b>
-                <span className="rt-hint muted small">{filtered.length.toLocaleString(f.locale)} gefunden · Zeilen anhaken für einen Teil-Export</span>
+                <span className="rt-count">{filtered.length.toLocaleString(f.locale)}</span>
+                <span className="push-right" />
               </>
             )}
+            <label className="rt-selall">
+              <input
+                type="checkbox"
+                checked={allChecked}
+                onChange={(e) => {
+                  const n = new Set(sel);
+                  shown.forEach((a) => (e.target.checked ? n.add(a.id) : n.delete(a.id)));
+                  setSel(n);
+                }}
+              />
+              Seite auswählen
+            </label>
           </div>
           <div className="table-wrap borderless report-table-wrap">
             <table className="report-table">
@@ -255,11 +280,15 @@ export function Reports() {
                 {shown.length ? (
                   shown.map((a) => {
                     const k = kindLabel(a);
+                    const c = teamColor(a.team);
+                    const dd = day(a.date);
+                    const h = a.start && a.end && !a.isAbsence ? f.num(a.kind === 'Bereitschaft' ? durationHours(a.start, a.end) : netHours(a), 2) : '';
                     return (
-                      <tr key={a.id} className={sel.has(a.id) ? 'sel' : ''}>
-                        <td className="cb-col">
+                      <tr key={a.id} className={sel.has(a.id) ? 'is-selected' : ''}>
+                        <td className="cb-col rt-cb">
                           <input
                             type="checkbox"
+                            aria-label="Auswählen"
                             checked={sel.has(a.id)}
                             onChange={(e) => {
                               const n = new Set(sel);
@@ -269,23 +298,42 @@ export function Reports() {
                             }}
                           />
                         </td>
-                        <td className="nowrap">
-                          {f.weekdayName(day(a.date), 'short')} {f.fmtIsoDate(a.date)}
+                        <td className="rt-date">
+                          <span className="rt-day">{f.weekdayName(dd, 'short')}</span>
+                          <b>{f.fmtIsoDate(a.date)}</b>
                         </td>
-                        <td>
-                          <b>{a.employee}</b>
-                          <small className="muted block">{a.team}</small>
-                        </td>
-                        <td>
-                          <span className={`pill kind-${k.toLowerCase()}`} style={{ color: '#' + KIND_HEX[k], background: '#' + KIND_LIGHT[k] } as CSSProperties}>
-                            {k}
+                        <td className="rt-person">
+                          <span className="person">
+                            <Avatar name={a.employee} color={c} size={30} />
+                            <span className="rt-name">
+                              <b>{a.employee}</b>
+                              <small>
+                                <Dot color={c} />
+                                {a.team}
+                              </small>
+                            </span>
                           </span>
                         </td>
-                        <td>
-                          {a.shift}
-                          <small className="muted block">{a.start ? tRange(a) : a.isAbsence ? 'ganztägig' : ''}</small>
+                        <td className="rt-kind">
+                          <span className={`pill kind-${k.toLowerCase()}`}>{k}</span>
                         </td>
-                        <td className="num">{a.start && a.end && !a.isAbsence ? f.num(a.kind === 'Bereitschaft' ? durationHours(a.start, a.end) : netHours(a), 2) : '—'}</td>
+                        <td className="rt-shift" data-date={`${f.weekdayName(dd, 'short')} ${f.fmtShort(dd)}`}>
+                          <b>{a.shift || k}</b>
+                          <small>
+                            <Icon name="clock" />
+                            {a.start ? tRange(a) : isVariableStandby(a) ? 'variabel' : 'ganztägig'}
+                          </small>
+                        </td>
+                        <td className="num rt-hours">
+                          {h ? (
+                            <>
+                              <b>{h}</b>
+                              <small>Std.</small>
+                            </>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })

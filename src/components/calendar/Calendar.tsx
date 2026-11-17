@@ -1,6 +1,6 @@
 'use client';
 /* Kalender: Dienstplan & Bereitschaft – Ansichten Tag, Woche, Monat, Team (Dienstplan) bzw. Zeitleiste (Bereitschaft) */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '../AppProvider';
@@ -1118,6 +1118,94 @@ function TeamMatrix(props: {
 
   /* Handy: Wochenübersicht + Details zum gewählten Tag */
   const selDay = props.mobileDate && dates.includes(props.mobileDate) ? props.mobileDate : dates.includes(today) ? today : dates[0];
+  /* Kompakte Wochenübersicht je Team (wie bisher): Abdeckung pro Tag, je Person ein Feld mit Dienstkürzel */
+  const abbr = (a: Entry) => (a.kind === 'Arbeitsort' ? (a.shift === 'Homeoffice' ? 'HO' : 'BÜ') : String(a.shift || '').replace(/[^A-Za-zÄÖÜäöüß0-9]/g, '').slice(0, 2) || '•');
+  const legendMap = new Map<string, string>();
+  const tileFor = (items: Entry[]) => {
+    const duty = items.find((a) => a.kind === 'Dienstplan' && !a.isAbsence),
+      abs = items.find((a) => a.isAbsence),
+      sb = items.find((a) => a.kind === 'Bereitschaft'),
+      wp = items.find((a) => a.kind === 'Arbeitsort') || (duty && props.wpFor(duty)),
+      nt = items.find((a) => a.kind === 'Notiz');
+    const main = abs || duty;
+    const out: ReactNode[] = [];
+    if (main) {
+      legendMap.set(abbr(main), main.shift);
+      out.push(
+        <span key="m" className={`mt-tile ${abs ? 'is-absence' : ''} ${props.conflicts.has(main.id) ? 'is-conflict' : ''}`} style={{ '--shift-color': shiftHexColor(assignmentColor(main, data.teams, data.shiftTypes)) } as CSSProperties}>
+          {abbr(main)}
+        </span>,
+      );
+    } else if (sb) {
+      out.push(
+        <span key="s" className="mt-tile is-standby" style={{ '--shift-color': shiftHexColor(assignmentColor(sb, data.teams, data.shiftTypes)) } as CSSProperties}>
+          ◷
+        </span>,
+      );
+    } else out.push(<span key="e" className="mt-empty" />);
+    if (sb) out.push(<i key="sb" className="mt-sb" style={{ '--c': shiftHexColor(assignmentColor(sb, data.teams, data.shiftTypes)) } as CSSProperties} title="Bereitschaft" />);
+    if (wp && wp.shift === 'Homeoffice') out.push(<i key="ho" className="mt-ho" title="Homeoffice">⌂</i>);
+    if (nt) out.push(<i key="nt" className="mt-note" title="Notizen anzeigen" data-notes-open={noteKey(nt)}>✎</i>);
+    return out;
+  };
+  const [focusEmp, setFocusEmp] = useState('');
+  useEffect(() => {
+    if (!focusEmp) return;
+    const card = [...document.querySelectorAll<HTMLElement>('[data-emp-card]')].find((c) => c.dataset.empCard === focusEmp);
+    card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusEmp, selDay]);
+  const mWeek = shownTeams.map((t) => {
+    const all = orderedMembers(t, data.staff, prefs.memberOrder[t.id]);
+    const members = member === 'Alle Mitarbeiter' ? all : all.filter((p) => p.name === member);
+    if (!members.length) return null;
+    const color = teamColor(t);
+    const cov = (date: string) => (!isDuty ? (sbOn(t.name, date) ? 1 : 0) : all.filter((p) => data.entries.some((a) => a.date === date && a.employee === p.name && a.kind === 'Dienstplan' && !a.isAbsence)).length);
+    return (
+      <div className="mt-team" key={t.id}>
+        <div className="mt-team-name">
+          <Dot color={color} />
+          {t.name}
+        </div>
+        <div className="mt-grid cal-cols" style={{ '--cols': dates.length } as CSSProperties}>
+          <span className="mt-corner" />
+          {dates.map((date) => {
+            const c = cov(date),
+              pct = all.length ? c / all.length : 0;
+            return (
+              <button key={date} type="button" className={`mt-cov ${date === selDay ? 'sel' : ''} ${isDuty ? (pct >= 0.8 ? 'ok' : pct >= 0.5 ? 'mid' : 'low') : c ? 'ok' : 'low'}`} onClick={() => { setFocusEmp(''); props.onSelectDay(date); }}>
+                {isDuty ? `${c}/${all.length}` : c ? '✓' : '!'}
+              </button>
+            );
+          })}
+          {members.map((p) => {
+            const short = p.name.split(' ');
+            return (
+              <Fragment key={p.id}>
+                <span className="mt-name">
+                  {short[0]} {(short[1] || '').charAt(0)}.
+                </span>
+                {dates.map((date) => (
+                  <button
+                    key={date}
+                    type="button"
+                    className={`mt-cell ${date === selDay ? 'sel' : ''} ${date === today ? 'is-today' : ''}`}
+                    aria-label={`${p.name} ${date}`}
+                    onClick={() => {
+                      setFocusEmp(p.name);
+                      props.onSelectDay(date);
+                    }}
+                  >
+                    {tileFor(props.visible.filter((a) => a.date === date && a.employee === p.name))}
+                  </button>
+                ))}
+              </Fragment>
+            );
+          })}
+        </div>
+      </div>
+    );
+  });
+  const legend = [...legendMap.entries()].slice(0, 8);
   return (
     <>
       <div className="team-matrix-scroll">
@@ -1139,7 +1227,7 @@ function TeamMatrix(props: {
       <div className="mobile-team-view">
         <div className="mt-head">
           <b>Wochenübersicht</b>
-          <small>Tippe auf einen Tag, um Details zu sehen.</small>
+          <small>Tippe auf einen Tag oder ein Feld, um Details zu sehen.</small>
         </div>
         <div className="mt-days cal-cols" style={{ '--cols': dates.length } as CSSProperties}>
           <span className="mt-corner" />
@@ -1149,6 +1237,20 @@ function TeamMatrix(props: {
               <b>{day(date).getDate()}</b>
             </button>
           ))}
+        </div>
+        {mWeek.some(Boolean) ? mWeek : <div className="empty-note">Keine Mitarbeiter für diesen Filter.</div>}
+        <div className="mt-legend">
+          {legend.map(([k, v]) => (
+            <span key={k}>
+              <b>{k}</b> {v}
+            </span>
+          ))}
+          <span>
+            <i className="mt-sb" style={{ '--c': '#159da8' } as CSSProperties} /> Bereitschaft
+          </span>
+          <span>
+            <span className="mt-tile is-absence mini">U</span> Abwesenheit
+          </span>
         </div>
         <div className="md-heading">
           <b>{f.fmtWithWeekday(day(selDay))}</b>
@@ -1184,7 +1286,7 @@ function TeamMatrix(props: {
                 const items = dayEntries(selDay).filter((a) => a.employee === p.name);
                 const has = items.some(isWork) || (!isDuty && !!selSb);
                 return (
-                  <div className="md-person" key={p.id}>
+                  <div className={`md-person${focusEmp === p.name ? ' focus' : ''}`} key={p.id} data-emp-card={p.name}>
                     <div className="md-person-head">
                       <Avatar name={p.name} color={color} size={32} />
                       <div>
@@ -1256,7 +1358,7 @@ function StandbyContact({ id, onClose }: { id: string; onClose: () => void }) {
                   {a.team}
                 </small>
               </span>
-              {active && <span className="pill teal">Jetzt aktiv</span>}
+              {active && <span className="pill sbc-live">● Jetzt in Bereitschaft</span>}
             </div>
           </div>
           <div className="wp-field">
@@ -1273,6 +1375,12 @@ function StandbyContact({ id, onClose }: { id: string; onClose: () => void }) {
               <b className={num ? '' : 'muted'}>{num || 'nicht hinterlegt'}</b>
             </div>
           </div>
+          {(!num || !mail) && (
+            <small className="wp-note">
+              {!num ? 'Keine Bereitschaftsnummer hinterlegt. ' : ''}
+              {!mail ? 'Keine E-Mail für Teams hinterlegt.' : ''}
+            </small>
+          )}
           <div className="btn-row modal-actions wp-actions">
             <span className="wp-actions-right">
               {mail ? (

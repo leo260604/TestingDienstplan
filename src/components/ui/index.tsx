@@ -202,7 +202,7 @@ export function Field({ label, children, note, className = '' }: { label: ReactN
   );
 }
 
-export function DateRange({ from, to, onFrom, onTo, fromLabel = 'Von', toLabel = 'Bis', toRequired = true, min, max }: { from: string; to: string; onFrom: (v: string) => void; onTo: (v: string) => void; fromLabel?: string; toLabel?: string; toRequired?: boolean; min?: string; max?: string }) {
+export function DateRange({ from, to, onFrom, onTo, fromLabel = 'Von', toLabel = 'Bis', toRequired = true, min, max, allowed }: { from: string; to: string; onFrom: (v: string) => void; onTo: (v: string) => void; fromLabel?: string; toLabel?: string; toRequired?: boolean; min?: string; max?: string; allowed?: (iso: string) => boolean }) {
   return (
     <div className="wp-range">
       <label onClick={(e) => e.preventDefault()}>
@@ -213,6 +213,7 @@ export function DateRange({ from, to, onFrom, onTo, fromLabel = 'Von', toLabel =
           min={min || '2000-01-01'}
           max={max || '2099-12-31'}
           required
+          allowed={allowed}
           rangeFrom={from}
           rangeTo={to}
           onChange={(v) => {
@@ -226,7 +227,7 @@ export function DateRange({ from, to, onFrom, onTo, fromLabel = 'Von', toLabel =
       </span>
       <label onClick={(e) => e.preventDefault()}>
         <small>{toLabel}</small>
-        <DateField value={to} ariaLabel={toLabel} min={from || min || '2000-01-01'} max={max || '2099-12-31'} required={toRequired} rangeFrom={from} rangeTo={to} onChange={onTo} />
+        <DateField value={to} ariaLabel={toLabel} min={from || min || '2000-01-01'} max={max || '2099-12-31'} required={toRequired} allowed={allowed} rangeFrom={from} rangeTo={to} onChange={onTo} />
       </label>
     </div>
   );
@@ -487,6 +488,51 @@ export function TeamFilter({ teams, selected, onChange, count }: { teams: { name
   );
 }
 
+/** Kompakte Auswahlliste im Stil des Team-Filters (am Handy statt Filter-Chips, wie bisher) */
+export function FilterDropdown({ className, icon, label, active, options, onPick, multi }: { className: string; icon: string; label: string; active?: boolean; options: { value: string; label: string; on?: boolean; small?: ReactNode; icon?: string; cls?: string }[]; onPick: (v: string) => void; multi?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOutside(open, ref, () => setOpen(false));
+  return (
+    <div className={`team-dd ${className} ${open ? 'open' : ''}`} ref={ref}>
+      <button type="button" className={`chip ${active ? 'active' : ''} team-dd-btn`} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <Icon name={icon} />
+        <span className="team-dd-label">{label}</span>
+        <Icon name="down" className="team-dd-caret" />
+      </button>
+      {open && (
+        <div className="team-dd-panel">
+          <div className="team-dd-list" role="listbox" aria-multiselectable={multi || undefined}>
+            {options.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                role="option"
+                aria-selected={!!o.on}
+                className={`team-dd-opt ${o.cls || ''} ${o.on ? 'on' : ''}`}
+                onClick={() => {
+                  onPick(o.value);
+                  if (!multi) setOpen(false);
+                }}
+              >
+                {o.icon ? (
+                  <Icon name={o.icon} />
+                ) : (
+                  <span className="team-dd-check">
+                    <Icon name="check" />
+                  </span>
+                )}
+                <span className="team-dd-name">{o.label}</span>
+                {o.small !== undefined && <small>{o.small}</small>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Farbauswahl: Vorschläge + eigene Farbe (eigener Farbwähler) */
 export function ColorChoice({ value, onChange, swatches }: { value: string; onChange: (c: string) => void; swatches: string[] }) {
   return (
@@ -496,6 +542,44 @@ export function ColorChoice({ value, onChange, swatches }: { value: string; onCh
       ))}
       <label className="color-swatch custom" title="Eigene Farbe wählen" style={{ '--cv': value } as CSSProperties}>
         <ColorField value={value} ariaLabel="Eigene Farbe wählen" onChange={onChange} />
+      </label>
+    </div>
+  );
+}
+
+/** Teamfarbe wie bisher: runde Farbfelder (✓ = gewählt, 🔒 = von einem anderen Team belegt) + „Eigene“ Farbe */
+export function TeamColorChoice({ value, onChange, swatches, taken, disabled }: { value: string; onChange: (c: string) => void; swatches: string[]; taken?: (c: string) => string | null; disabled?: boolean }) {
+  const cur = value.toLowerCase();
+  const list = [...new Set([...(swatches.map((c) => c.toLowerCase()).includes(cur) || !/^#[0-9a-f]{6}$/i.test(value) ? [] : [cur]), ...swatches.map((c) => c.toLowerCase())])].slice(0, 10);
+  return (
+    <div className="te-colors">
+      {list.map((c) => {
+        const used = taken?.(c) || null;
+        return (
+          <button
+            key={c}
+            type="button"
+            className={`te-swatch ${c === cur ? 'on' : ''} ${used ? 'taken' : ''}`}
+            style={{ '--c': c } as CSSProperties}
+            aria-label={`Farbe ${c}${used ? ' – vergeben an ' + used : ''}`}
+            title={used ? 'Bereits vergeben an ' + used : 'Farbe ' + c}
+            disabled={disabled || !!used}
+            onClick={() => onChange(c)}
+          >
+            <Icon name={used ? 'lock' : 'check'} />
+          </button>
+        );
+      })}
+      <label
+        className="te-custom"
+        title="Eigene Farbe"
+        onClick={(e) => {
+          e.preventDefault();
+          if ((e.target as HTMLElement).tagName !== 'INPUT') e.currentTarget.querySelector('input')?.click();
+        }}
+      >
+        <ColorField value={/^#[0-9a-f]{6}$/i.test(value) ? value : '#14a1a9'} ariaLabel="Eigene Farbe wählen" disabled={disabled} onChange={onChange} />
+        <span>Eigene</span>
       </label>
     </div>
   );

@@ -4,7 +4,7 @@ import { prisma } from '../db';
 import { audit, fail, notifyAssignments, ok, withCtx, type ActionResult } from '../context';
 import { isoToDate, KIND_TO_DB } from '../mappers';
 import { addDays, day, DATE_RANGE_MSG, daysBetween, F, isoDate, validDateInput } from '@/lib/dates';
-import { isHoliday } from '@/lib/holidays';
+import { holidayName, isHoliday } from '@/lib/holidays';
 import {
   absenceTeamFor,
   areaOf,
@@ -24,6 +24,12 @@ import { planDutyRotation, planStandbyRotation } from '@/lib/rotation';
 import type { Ctx, Entry } from '@/lib/types';
 
 const T = /^\d\d:\d\d$/;
+const eachDayIso = (from: string, to: string) => {
+  const out: string[] = [];
+  if (!validDateInput(from) || !validDateInput(to)) return out;
+  for (let cur = day(from); isoDate(cur) <= to && out.length < 400; cur = addDays(cur, 1)) out.push(isoDate(cur));
+  return out;
+};
 
 function entryData(c: Ctx, e: Entry, authorId?: string) {
   const emp = c.data.staff.find((p) => p.name === e.employee);
@@ -103,7 +109,7 @@ export async function saveDuty(inp: SaveDutyInput): Promise<ActionResult<{ count
     }
     if (!sb) {
       const hol = dates.filter(isHoliday);
-      if (hol.length && dates.length === 1) return fail(`Am ${F.fmtWithWeekday(day(hol[0]))} ist Feiertag – an Feiertagen können keine Dienste eingetragen werden.`);
+      if (hol.length && dates.length === 1) return fail(`Am ${F.fmtWithWeekday(day(hol[0]))} ist Feiertag (${holidayName(hol[0])}) – an Feiertagen können keine Dienste eingetragen werden, nur Bereitschaften.`);
       dates = dates.filter((d) => !hol.includes(d));
       skipped += hol.length;
     }
@@ -167,7 +173,7 @@ export async function moveEntry(id: string, date: string, employee?: string): Pr
     if (!item || !validDateInput(date)) return fail('Der Eintrag wurde nicht gefunden.');
     const target = employee || item.employee;
     if (item.date === date && target === item.employee) return ok();
-    if (item.kind === 'Dienstplan' && !item.isAbsence && isHoliday(date)) return fail('An Feiertagen können keine Dienste eingetragen werden.');
+    if (item.kind === 'Dienstplan' && !item.isAbsence && isHoliday(date)) return fail(`Am ${F.fmtWithWeekday(day(date))} ist Feiertag (${holidayName(date)}) – an Feiertagen können keine Dienste eingetragen werden, nur Bereitschaften.`);
     if (item.kind === 'Bereitschaft') {
       const st = standbyTimeByName(c.data.standbyTimes, c.data.teams, item.shift, item.team);
       if (st && !standbyDayOk(st, date)) return fail(`„${st.name}“ ist nur an diesen Tagen möglich: ${standbyDaysLabel(st)}.`);
@@ -352,7 +358,8 @@ export async function runStandbyRotation(inp: { teams: string[]; timeId: string;
     const st = c.data.standbyTimes.find((x) => x.id === inp.timeId);
     if (!st) return fail('Bereitschaftszeit nicht gefunden.');
     const bad = chosen.filter((t) => !standbyTimeForTeam(st, t.name, c.data.teams));
-    if (bad.length) return fail(`„${st.name}“ ist für ${bad.map((t) => t.name).join(', ')} nicht freigegeben.`);
+    if (bad.length) return fail(`„${st.name}“ ist für ${bad.map((t) => t.name).join(', ')} nicht freigegeben. Bitte diese Teams abwählen oder eine andere Bereitschaftszeit wählen.`);
+    if (!eachDayIso(inp.from, inp.to).some((d) => standbyDayOk(st, d))) return fail(`„${st.name}“ ist nur an diesen Tagen möglich: ${standbyDaysLabel(st)} – im Zeitraum liegt kein passender Tag.`);
     const variable = isVariableStandby(st);
     if (variable && (!T.test(inp.start || '') || !T.test(inp.end || '') || inp.start === inp.end)) return fail(`${st.name} ist eine variable Bereitschaft – bitte Beginn und Ende eingeben.`);
     const res = planStandbyRotation({

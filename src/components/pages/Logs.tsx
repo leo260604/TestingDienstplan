@@ -3,7 +3,7 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import { useApp } from '../AppProvider';
 import { useShell } from '../shell/AppShell';
-import { Avatar, Heading, Icon } from '../ui';
+import { Avatar, FilterDropdown, Heading, Icon } from '../ui';
 import { isoDate, pad2 } from '@/lib/dates';
 import { canEdit, adminCaps, absenceTeams, manageableTeams, pagesFor, selfEditAllowed, standbyColorTeams, teamNoteTeams } from '@/lib/access';
 import { permsFor, roleLabel } from '@/lib/permissions';
@@ -132,7 +132,10 @@ export function Roles() {
             </div>
             {changes > 0 && (
               <span className="perm-save-bar">
-                <span className="pill amber">{changes} Änderungen</span>
+                <span className="pill warn-pill">
+                  <Icon name="alert" />
+                  {changes} ungespeicherte {changes === 1 ? 'Änderung' : 'Änderungen'}
+                </span>
                 <button className="btn small" onClick={() => setDraft(base())}>
                   Verwerfen
                 </button>
@@ -576,6 +579,17 @@ export function Help() {
   const hit = (title: string, it: (typeof secs)[0]['items'][0]) => !words.length || words.every((w) => `${title} ${it.t} ${it.s.join(' ')} ${tipOf(it.tip)}`.toLowerCase().includes(w));
   const shown = secs.map((s) => ({ ...s, items: s.items.filter((it) => hit(s.title, it)) })).filter((s) => s.items.length);
   const total = shown.reduce((n, s) => n + s.items.length, 0);
+  /* Zum Abschnitt springen und ihn kurz hervorheben (wie bisher) */
+  const jump = (id: string) => {
+    const el = document.getElementById('help-' + id);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el.classList.remove('help-flash');
+    setTimeout(() => {
+      el.classList.add('help-flash');
+      setTimeout(() => el.classList.remove('help-flash'), 1400);
+    }, 30);
+  };
   return (
     <>
       <Heading title="Hilfe" />
@@ -588,10 +602,11 @@ export function Help() {
           {total} {words.length ? 'Treffer' : 'Anleitungen'}
         </span>
       </div>
+      <FilterDropdown className="help-dd" icon="menu" label="Abschnitte" options={shown.map((s) => ({ value: s.id, label: s.title, icon: s.icon, small: s.items.length, cls: 'help-dd-opt' }))} onPick={jump} />
       <div className="help-layout">
         <nav className="help-toc" aria-label="Inhalt der Hilfe">
           {shown.map((s) => (
-            <button key={s.id} type="button" className="help-toc-item" onClick={() => document.getElementById('help-' + s.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+            <button key={s.id} type="button" className="help-toc-item" onClick={() => jump(s.id)}>
               <Icon name={s.icon} />
               <span>{s.title}</span>
               <small>{s.items.length}</small>

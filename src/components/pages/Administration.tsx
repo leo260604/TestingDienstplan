@@ -3,9 +3,9 @@
 import { useState, type CSSProperties } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '../AppProvider';
-import { Avatar, ColorChoice, Field, Heading, Icon, Meter, Modal, ModalActions, Picker, Segmented, Toggle } from '../ui';
+import { Avatar, ColorChoice, Field, Heading, Icon, Meter, Modal, ModalActions, Picker, Segmented, TeamColorChoice, Toggle } from '../ui';
 import { adminCaps, adminTeams, canView, teamSettings } from '@/lib/access';
-import { freeTeamColors } from '@/lib/colors';
+import { colorClash, distinctTeamColor, freeTeamColors } from '@/lib/colors';
 import { roleLabel, visibleRole } from '@/lib/permissions';
 import { createTeam, deleteDepartment, deleteTeam, saveDepartment, saveTeam } from '@/server/actions/admin';
 import type { Department, SelfMode, Team, TeamSettings } from '@/lib/types';
@@ -270,7 +270,7 @@ export function Administration() {
 
 function CreateTeam({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const { data, run, teamColor } = useApp();
-  const others = data.teams.map((t) => ({ id: t.id, color: teamColor(t) }));
+  const others = data.teams.map((t) => ({ id: t.id, color: teamColor(t), name: t.name }));
   const swatches = freeTeamColors(others);
   const [name, setName] = useState('');
   const [color, setColor] = useState(swatches[0] || '#14a1a9');
@@ -281,7 +281,7 @@ function CreateTeam({ onClose, onCreated }: { onClose: () => void; onCreated: (i
       title="Neues Team anlegen"
       sub="Danach legst du Mitglieder, Teamleitung und Stellvertretung fest."
       icon="users"
-      headStyle={{ background: color, color: '#fff' }}
+      headStyle={{ background: color, color: '#fff', boxShadow: `0 6px 16px -6px ${color}` }}
       className="form-dialog nt-modal"
       onClose={onClose}
       onSubmit={async () => {
@@ -290,17 +290,38 @@ function CreateTeam({ onClose, onCreated }: { onClose: () => void; onCreated: (i
       }}
       footer={<ModalActions onCancel={onClose} okLabel="Team anlegen" disabled={!name.trim() || dup} />}
     >
-      <Field label="Teamname" note={dup ? 'Ein Team mit diesem Namen existiert bereits.' : 'Der Name erscheint im Dienstplan, in der Bereitschaft und in den Filtern.'}>
-        <input maxLength={60} autoComplete="off" placeholder="z. B. Team Ost" required value={name} autoFocus onChange={(e) => setName(e.target.value)} />
-      </Field>
-      <Field label="Teamfarbe">
-        <ColorChoice value={color} onChange={setColor} swatches={swatches} />
+      <div className="wp-field">
+        <label className="wp-label" htmlFor="nt-name">
+          Teamname
+        </label>
+        <div className={`nt-input${dup ? ' bad' : ''}`} style={{ '--c': color } as CSSProperties}>
+          <span className="nt-input-ic">
+            <Icon name="users" />
+          </span>
+          <input id="nt-name" maxLength={60} autoComplete="off" placeholder="z. B. Team Ost" required value={name} autoFocus onChange={(e) => setName(e.target.value)} />
+          <span className="nt-count">{name.length}/60</span>
+        </div>
+        <small className={`wp-note nt-msg${dup ? ' bad' : ''}`}>{dup ? 'Ein Team mit diesem Namen existiert bereits.' : 'Der Name erscheint im Dienstplan, in der Bereitschaft und in den Filtern.'}</small>
+      </div>
+      <Field label="Teamfarbe" note="Jede Farbe gibt es nur einmal – angezeigt werden nur freie Farben.">
+        <TeamColorChoice value={color} onChange={(c) => setColor(distinctTeamColor(c, others))} swatches={swatches} taken={(c) => colorClash(c, others)?.name || null} />
       </Field>
       {data.departments.length > 0 && (
         <Field label={<>Abteilung <span className="muted">(optional)</span></>}>
           <Picker value={dept} onChange={setDept} noneLabel="Keine Abteilung" options={data.departments.map((d) => ({ value: d.id, label: d.name, sub: `${d.teamIds.length} Teams`, pic: 'icon', icon: 'build', color: d.color }))} />
         </Field>
       )}
+      <div className="wp-summary nt-preview">
+        <span className="nt-badge" style={{ '--c': color } as CSSProperties}>
+          {(name.trim() || 'T').replace(/^Team\s+/i, '').slice(0, 2).toUpperCase() || 'T'}
+        </span>
+        <div>
+          <b>{name.trim() || 'Neues Team'}</b>
+          <small>
+            0 Mitglieder{dept ? ' · ' + (data.departments.find((x) => x.id === dept)?.name || '') : ''} · {data.teams.length + 1} von 20 Teams
+          </small>
+        </div>
+      </div>
     </Modal>
   );
 }
@@ -312,7 +333,7 @@ function TeamEditor({ team, onClose }: { team: Team; onClose: () => void }) {
   const [tab, setTab] = useState<'general' | 'members' | 'rules'>('general');
   const [d, setD] = useState({ name: team.name, color: teamColor(team), memberIds: [...team.memberIds], leaderId: team.leaderId, deputyId: team.deputyId, settings: { ...st } as TeamSettings });
   const [mq, setMq] = useState('');
-  const others = data.teams.map((t) => ({ id: t.id, color: teamColor(t) }));
+  const others = data.teams.map((t) => ({ id: t.id, color: teamColor(t), name: t.name }));
   const mem = data.staff.filter((p) => d.memberIds.includes(p.id)).sort((a, b) => a.name.localeCompare(b.name, 'de'));
   const people = [...data.staff].sort((a, b) => Number(d.memberIds.includes(b.id)) - Number(d.memberIds.includes(a.id)) || a.name.localeCompare(b.name, 'de')).filter((p) => !mq || p.name.toLowerCase().includes(mq.toLowerCase()));
   const setS = (patch: Partial<TeamSettings>) => setD({ ...d, settings: { ...d.settings, ...patch } });
@@ -361,7 +382,9 @@ function TeamEditor({ team, onClose }: { team: Team; onClose: () => void }) {
               <Field label="Teamname">
                 <input value={d.name} maxLength={60} disabled={!caps.structure} onChange={(e) => setD({ ...d, name: e.target.value })} />
               </Field>
-              <Field label="Teamfarbe">{caps.color ? <ColorChoice value={d.color} onChange={(color) => setD({ ...d, color })} swatches={freeTeamColors(others, team.id).concat(d.color).slice(0, 11)} /> : <span className="muted">{d.color}</span>}</Field>
+              <Field label="Teamfarbe" note="Wird auch für die Bereitschaft verwendet. Jede Farbe gibt es nur einmal.">
+                <TeamColorChoice value={d.color} onChange={(color) => setD({ ...d, color })} swatches={freeTeamColors(others, team.id)} taken={(c) => colorClash(c, others, team.id)?.name || null} disabled={!caps.color} />
+              </Field>
               <div className="te-two">
                 <Field label="Teamleitung">
                   <Picker value={d.leaderId} onChange={(leaderId) => setD({ ...d, leaderId })} disabled={!caps.structure} noneLabel="Nicht besetzt" options={mem.map((p) => ({ value: p.id, label: p.name, sub: roleLabel(visibleRole(p.role, user.role)), pic: 'person' }))} />
@@ -417,15 +440,27 @@ function TeamEditor({ team, onClose }: { team: Team; onClose: () => void }) {
           )}
           {tab === 'rules' && (
             <div className="te-sec">
-              <div className="setting-row">
-                <div>
-                  <b>Diensttausch</b>
-                  <small>Mitglieder können Dienste untereinander tauschen (mit Bestätigung).</small>
+              <section className="ts-block">
+                <div className="ts-block-head">
+                  <span className="ts-ic">
+                    <Icon name="refresh" />
+                  </span>
+                  <div>
+                    <b>Diensttausch</b>
+                    <small>Mitarbeiter können Dienste untereinander tauschen – erst nach Bestätigung der Kollegin bzw. des Kollegen.</small>
+                  </div>
+                  <label className="ts-switch">
+                    <input type="checkbox" checked={d.settings.swap} disabled={!caps.settings} onChange={(e) => setS({ swap: e.target.checked })} />
+                    <span className="ts-track">
+                      <span />
+                    </span>
+                    <b className="sr-only">Diensttausch aktiv</b>
+                  </label>
                 </div>
-                <Toggle on={d.settings.swap} onChange={(swap) => setS({ swap })} />
-              </div>
-              <SelfRule label="Dienste selbst eintragen" mode={d.settings.selfDuty} ids={d.settings.selfDutyIds} onMode={(selfDuty) => setS({ selfDuty })} onIds={(selfDutyIds) => setS({ selfDutyIds })} mem={mem} color={d.color} editable={caps.settings} />
-              <SelfRule label="Bereitschaft selbst eintragen" mode={d.settings.selfStandby} ids={d.settings.selfStandbyIds} onMode={(selfStandby) => setS({ selfStandby })} onIds={(selfStandbyIds) => setS({ selfStandbyIds })} mem={mem} color={d.color} editable={caps.settings} />
+                <p className="ts-note">{d.settings.swap ? 'Aktiviert – „Dienst tauschen“ ist im ⋯-Menü der Dienste verfügbar.' : 'Deaktiviert – in diesem Team sind keine Tauschanfragen möglich.'}</p>
+              </section>
+              <SelfRule icon="cal" label="Dienste selbst eintragen" desc="Wer eigene Dienste im Dienstplan anlegen und bearbeiten darf." name="selfDuty" mode={d.settings.selfDuty} ids={d.settings.selfDutyIds} onMode={(selfDuty) => setS({ selfDuty })} onIds={(selfDutyIds) => setS({ selfDutyIds })} mem={mem} color={d.color} editable={caps.settings} />
+              <SelfRule icon="moon" label="Bereitschaft selbst eintragen" desc="Wer eigene Bereitschaften anlegen und bearbeiten darf." name="selfStandby" mode={d.settings.selfStandby} ids={d.settings.selfStandbyIds} onMode={(selfStandby) => setS({ selfStandby })} onIds={(selfStandbyIds) => setS({ selfStandbyIds })} mem={mem} color={d.color} editable={caps.settings} />
             </div>
           )}
         </div>
@@ -471,33 +506,57 @@ function TeamEditor({ team, onClose }: { team: Team; onClose: () => void }) {
   );
 }
 
-function SelfRule({ label, mode, ids, onMode, onIds, mem, color, editable }: { label: string; mode: SelfMode; ids: string[]; onMode: (m: SelfMode) => void; onIds: (ids: string[]) => void; mem: { id: string; name: string }[]; color: string; editable: boolean }) {
+function SelfRule({ icon, label, desc, name, mode, ids, onMode, onIds, mem, color, editable }: { icon: string; label: string; desc: string; name: string; mode: SelfMode; ids: string[]; onMode: (m: SelfMode) => void; onIds: (ids: string[]) => void; mem: { id: string; name: string }[]; color: string; editable: boolean }) {
   return (
-    <div className="te-rule">
-      <div className="setting-row">
+    <section className="ts-block">
+      <div className="ts-block-head">
+        <span className="ts-ic">
+          <Icon name={icon} />
+        </span>
         <div>
           <b>{label}</b>
-          <small>Wer darf eigene Einträge selbst anlegen und ändern?</small>
+          <small>{desc}</small>
         </div>
-        <Segmented value={mode} options={[['none', 'Niemand'], ['all', 'Alle'], ['selected', 'Ausgewählte']]} onChange={onMode} />
       </div>
-      {mode === 'selected' && (
-        <div className="ts-list">
-          {mem.map((p) => (
-            <label className="ts-person" key={p.id}>
-              <input type="checkbox" checked={ids.includes(p.id)} disabled={!editable} onChange={(e) => onIds(e.target.checked ? [...ids, p.id] : ids.filter((x) => x !== p.id))} />
-              <span className="swap-check-box">
-                <Icon name="check" />
-              </span>
-              <Avatar name={p.name} color={color} size={26} />
-              <span className="pp-txt">
-                <b>{p.name}</b>
-              </span>
-            </label>
-          ))}
+      <div className="seg swap-mode ts-seg" role="radiogroup" aria-label={label}>
+        {(
+          [
+            ['none', 'Niemand'],
+            ['all', 'Alle im Team'],
+            ['selected', 'Ausgewählte'],
+          ] as [SelfMode, string][]
+        ).map(([v, l]) => (
+          <label key={v}>
+            <input type="radio" name={name} value={v} checked={mode === v} disabled={!editable} onChange={() => onMode(v)} />
+            <span>{l}</span>
+          </label>
+        ))}
+      </div>
+      {mode === 'selected' ? (
+        <div className="ts-people">
+          <div className="ts-list">
+            {mem.length ? (
+              mem.map((p) => (
+                <label className="ts-person" key={p.id}>
+                  <input type="checkbox" checked={ids.includes(p.id)} disabled={!editable} onChange={(e) => onIds(e.target.checked ? [...ids, p.id] : ids.filter((x) => x !== p.id))} />
+                  <span className="swap-check-box">
+                    <Icon name="check" />
+                  </span>
+                  <Avatar name={p.name} color={color} size={26} />
+                  <span className="pp-txt">
+                    <b>{p.name}</b>
+                  </span>
+                </label>
+              ))
+            ) : (
+              <div className="empty-note">Noch keine Mitglieder.</div>
+            )}
+          </div>
         </div>
+      ) : (
+        <p className="ts-note">{mode === 'all' ? `Alle ${mem.length} Mitglieder dürfen ihre eigenen Einträge anlegen, ändern und löschen.` : 'Nur Teamleitung und Stellvertretung tragen ein.'}</p>
       )}
-    </div>
+    </section>
   );
 }
 

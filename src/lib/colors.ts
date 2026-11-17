@@ -50,7 +50,7 @@ export function fromHsl(h: number, s: number, l: number) {
   return '#' + [f(0), f(8), f(4)].map((v) => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
 }
 
-type ColoredTeam = { id: string; color: string };
+type ColoredTeam = { id: string; color: string; name?: string };
 
 export function colorClash(c: string, others: ColoredTeam[], exceptId?: string | null) {
   let best: ColoredTeam | null = null,

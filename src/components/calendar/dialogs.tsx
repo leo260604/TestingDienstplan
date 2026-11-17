@@ -55,11 +55,24 @@ export function DutyDialog({ area, preset, onClose }: { area: 'Dienstplan' | 'Be
   const [from, setFrom] = useState(edit?.date || preset.date || today());
   const [to, setTo] = useState(edit?.date || preset.dateTo || preset.date || today());
 
+  /* Bereitschaft mit festen Wochentagen: andere Tage sind im Kalender ausgegraut (wie bisher) */
+  const dayOk = (s: typeof service, iso: string) => !sb || !s || !('days' in s) || !standbyRestricted(s as never) || standbyDayOk(s as never, iso);
+  const snap = (s: typeof service, iso: string) => {
+    let d = iso;
+    for (let g = 0; g < 400 && d && !dayOk(s, d); g++) d = isoDate(addDays(day(d), 1));
+    return d;
+  };
   const pickService = (id: string) => {
     setServiceId(id);
     const s = services.find((x) => x.id === id);
     setStart(s?.start || '');
     setEnd(s?.end || '');
+    if (sb && s) {
+      const nf = snap(s, from);
+      setFrom(nf);
+      const nt = snap(s, to < nf ? nf : to);
+      setTo(nt < nf ? nf : nt);
+    }
   };
 
   const summary = useMemo(() => {
@@ -156,8 +169,8 @@ export function DutyDialog({ area, preset, onClose }: { area: 'Dienstplan' | 'Be
           <TimeRange start={start} end={end} onStart={setStart} onEnd={setEnd} />
         </Field>
       )}
-      <Field label="Zeitraum" note={sb && service && standbyRestricted(service as never) ? `„${service.name}“ – eintragbar: ${standbyDaysLabel(service as never)}.` : undefined}>
-        <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} />
+      <Field label="Zeitraum" note={sb && service && standbyRestricted(service as never) ? `„${service.name}“ – eintragbar: ${standbyDaysLabel(service as never)}. Andere Tage sind im Kalender ausgegraut.` : undefined}>
+        <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} allowed={sb && service ? (iso) => dayOk(service, iso) : undefined} />
       </Field>
       <div className={`wp-summary ${summary.warn ? 'warn' : ''}`} aria-live="polite">
         <span className="wp-sum-ic">

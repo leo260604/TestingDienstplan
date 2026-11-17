@@ -122,7 +122,7 @@ export function SwapRequestDialog({ entryId, onClose, onOpenCenter }: { entryId?
                       className={`scal-day ${sel ? 'on' : ''} ${ok ? 'has' : ''} ${iso === today ? 'today' : ''} ${busy ? 'busy' : ''}`}
                       disabled={!ok && !sel}
                       aria-pressed={sel}
-                      title={`${f.fmtWithWeekday(day(iso))}${mine ? ` · ${mine.shift} ${tRange(mine)}` : ' · kein Dienst'}`}
+                      title={`${f.fmtWithWeekday(day(iso))}${mine ? ` · ${mine.shift} ${tRange(mine)}` : ' · kein Dienst'}${busy ? ' · bereits angefragt' : ''}`}
                       onClick={() => {
                         if (sel) setDates(dates.filter((d) => d !== iso));
                         else if (dates.length >= 14) toast('Höchstens 14 Tage pro Anfrage.');
@@ -161,6 +161,7 @@ export function SwapRequestDialog({ entryId, onClose, onOpenCenter }: { entryId?
                 dates.map((d) => {
                   const mm = d >= today ? mineOn(d) : [],
                     tt = d >= today ? theirsOn(d) : [];
+                  const dayBusy = [...mm, ...tt].some((x) => swapOpenFor(data.swaps, x.id));
                   const one = (l: Entry[]) =>
                     l.map((x) => (
                       <span key={x.id} className="block">
@@ -168,7 +169,7 @@ export function SwapRequestDialog({ entryId, onClose, onOpenCenter }: { entryId?
                       </span>
                     ));
                   return (
-                    <div className="swap-day" key={d}>
+                    <div className={`swap-day${dayBusy ? ' is-busy' : ''}`} key={d}>
                       <div className="swap-day-top">
                         <span className="swap-day-date">
                           <b>{f.fmtShortWd(day(d))}</b>
@@ -184,6 +185,12 @@ export function SwapRequestDialog({ entryId, onClose, onOpenCenter }: { entryId?
                         </span>
                         <span className="swap-take">{tt.length ? one(tt) : <em>{to.split(' ')[0]} hat frei</em>}</span>
                       </div>
+                      {dayBusy && (
+                        <small className="swap-opt-why">
+                          <Icon name="alert" />
+                          Bereits angefragt
+                        </small>
+                      )}
                     </div>
                   );
                 })
