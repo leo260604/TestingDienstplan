@@ -52,7 +52,7 @@ export function fromHsl(h: number, s: number, l: number) {
 
 type ColoredTeam = { id: string; color: string; name?: string };
 
-export function colorClash(c: string, others: ColoredTeam[], exceptId?: string | null) {
+export function colorClash(c: string, others: ColoredTeam[], exceptId?: string | null): ColoredTeam | null {
   let best: ColoredTeam | null = null,
     bd = 999;
   others.forEach((t) => {
@@ -63,7 +63,7 @@ export function colorClash(c: string, others: ColoredTeam[], exceptId?: string |
       best = t;
     }
   });
-  return bd < TC_MIN_DIFF ? best : null;
+  return bd < TC_MIN_DIFF ? (best as ColoredTeam | null) : null;
 }
 
 /** c unverändert, wenn deutlich verschieden – sonst die kleinste Abwandlung im gleichen Farbton */
