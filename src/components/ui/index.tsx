@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react';
 import { useApp } from '../AppProvider';
 import { initials } from '@/lib/demo-data';
+import { ColorField, DateField } from './pickers';
+
+export { ColorField, DateField, DayPickerPop, MonthPickerPop } from './pickers';
 
 export function Icon({ name, className = '' }: { name: string; className?: string }) {
   return (
@@ -202,16 +205,17 @@ export function Field({ label, children, note, className = '' }: { label: ReactN
 export function DateRange({ from, to, onFrom, onTo, fromLabel = 'Von', toLabel = 'Bis', toRequired = true, min, max }: { from: string; to: string; onFrom: (v: string) => void; onTo: (v: string) => void; fromLabel?: string; toLabel?: string; toRequired?: boolean; min?: string; max?: string }) {
   return (
     <div className="wp-range">
-      <label>
+      <label onClick={(e) => e.preventDefault()}>
         <small>{fromLabel}</small>
-        <input
-          type="date"
+        <DateField
           value={from}
+          ariaLabel={fromLabel}
           min={min || '2000-01-01'}
           max={max || '2099-12-31'}
           required
-          onChange={(e) => {
-            const v = e.target.value;
+          rangeFrom={from}
+          rangeTo={to}
+          onChange={(v) => {
             onFrom(v);
             if (v && (!to || to < v)) onTo(v);
           }}
@@ -220,9 +224,9 @@ export function DateRange({ from, to, onFrom, onTo, fromLabel = 'Von', toLabel =
       <span className="wp-range-arrow" aria-hidden="true">
         →
       </span>
-      <label>
+      <label onClick={(e) => e.preventDefault()}>
         <small>{toLabel}</small>
-        <input type="date" value={to} min={from || min || '2000-01-01'} max={max || '2099-12-31'} required={toRequired} onChange={(e) => onTo(e.target.value)} />
+        <DateField value={to} ariaLabel={toLabel} min={from || min || '2000-01-01'} max={max || '2099-12-31'} required={toRequired} rangeFrom={from} rangeTo={to} onChange={onTo} />
       </label>
     </div>
   );
@@ -483,7 +487,7 @@ export function TeamFilter({ teams, selected, onChange, count }: { teams: { name
   );
 }
 
-/** Farbauswahl: Vorschläge + eigene Farbe (nativer Farbwähler) */
+/** Farbauswahl: Vorschläge + eigene Farbe (eigener Farbwähler) */
 export function ColorChoice({ value, onChange, swatches }: { value: string; onChange: (c: string) => void; swatches: string[] }) {
   return (
     <div className="shift-color-presets">
@@ -491,7 +495,7 @@ export function ColorChoice({ value, onChange, swatches }: { value: string; onCh
         <button key={c} type="button" className={`color-swatch ${c.toLowerCase() === value.toLowerCase() ? 'active' : ''}`} style={{ '--swatch': c } as CSSProperties} aria-label={`Farbe ${c}`} title={c} onClick={() => onChange(c)} />
       ))}
       <label className="color-swatch custom" title="Eigene Farbe wählen" style={{ '--cv': value } as CSSProperties}>
-        <input type="color" value={value} aria-label="Eigene Farbe wählen" onChange={(e) => onChange(e.target.value)} />
+        <ColorField value={value} ariaLabel="Eigene Farbe wählen" onChange={onChange} />
       </label>
     </div>
   );

@@ -106,7 +106,7 @@ export function DutyDialog({ area, preset, onClose }: { area: 'Dienstplan' | 'Be
         if (clash && !(await ask(`${employee} hat am ${f.fmtIsoDate(clash.date)} bereits ${clash.shift} (${tRange(clash)}). Die Zeiten überschneiden sich. Trotzdem einteilen?`, 'Einteilen'))) return;
       }
     }
-    const r = await run(saveDuty({ area, team, employee, serviceId, from, to: to || from, start, end, editId: edit?.id || null, dutyDays: prefs.dutyDays }));
+    const r = await run(saveDuty({ area, team, employee, serviceId, from, to: to || from, start, end, editId: edit?.id || null, dutyDays: prefs.dutyDays }), { undo: edit ? `${employee} bearbeitet` : `${area === 'Bereitschaft' ? 'Bereitschaft' : 'Dienst'} für ${employee}` });
     if (r.ok) onClose();
   };
 
@@ -197,7 +197,7 @@ export function AbsenceDialog({ onClose }: { onClose: () => void }) {
       onSubmit={async () => {
         const p = data.staff.find((x) => x.name === employee);
         if (!canCreateAbsenceFor(ctx, p)) return;
-        const r = await run(createAbsence({ employee, kind, from, to: t2, start, end, note }));
+        const r = await run(createAbsence({ employee, kind, from, to: t2, start, end, note }), { undo: `${kind} für ${employee}` });
         if (r.ok) onClose();
       }}
       footer={<ModalActions onCancel={onClose} okLabel="Abwesenheit speichern" />}
@@ -296,7 +296,7 @@ export function WorkplaceDialog({ preset, onClose }: { preset: { from?: string; 
       icon={type === 'Homeoffice' ? 'home' : 'build'}
       onClose={onClose}
       onSubmit={async () => {
-        const r = await run(saveWorkplace({ employee: name, type, from, to }));
+        const r = await run(saveWorkplace({ employee: name, type, from, to }), { undo: `${type} für ${name}` });
         if (r.ok) onClose();
       }}
       footer={
@@ -309,7 +309,7 @@ export function WorkplaceDialog({ preset, onClose }: { preset: { from?: string; 
               disabled={!existing}
               onClick={async () => {
                 if (!(await ask(`Arbeitsort von ${name} an ${existing} ${existing === 1 ? 'Tag' : 'Tagen'} entfernen?`, 'Entfernen'))) return;
-                const r = await run(saveWorkplace({ employee: name, type, from, to, remove: true }));
+                const r = await run(saveWorkplace({ employee: name, type, from, to, remove: true }), { undo: `${type} entfernt` });
                 if (r.ok) onClose();
               }}
             >
@@ -490,7 +490,7 @@ export function StandbyRotationDialog({ current, preTeams, onClose }: { current:
       onClose={onClose}
       onSubmit={async () => {
         if (variable && (!vs || !ve)) return toast(`${st!.name} ist eine variable Bereitschaft – bitte Beginn und Ende eingeben.`);
-        const res = await run(runStandbyRotation({ teams, timeId, from, to, mode, keep, start: vs, end: ve }));
+        const res = await run(runStandbyRotation({ teams, timeId, from, to, mode, keep, start: vs, end: ve }), { undo: 'Bereitschafts-Rotation' });
         if (res.ok) onClose();
       }}
       footer={<ModalActions onCancel={onClose} okLabel="Rotation erstellen" />}
@@ -549,7 +549,7 @@ export function DutyRotationDialog({ current, preTeams, onClose }: { current: Da
       onSubmit={async () => {
         const removing = keep ? 0 : data.entries.filter((a) => a.kind === 'Dienstplan' && !a.isAbsence && a.date >= from && a.date <= to && teams.includes(a.team)).length;
         if (removing && !(await ask(`${removing} bestehende Dienste im Zeitraum werden ersetzt. Fortfahren?`, 'Ersetzen'))) return;
-        const res = await run(runDutyRotation({ teams, shifts: shifts.filter(visibleShift), from, to, mode, keep }));
+        const res = await run(runDutyRotation({ teams, shifts: shifts.filter(visibleShift), from, to, mode, keep }), { undo: 'Dienst-Rotation' });
         if (res.ok) onClose();
       }}
       footer={<ModalActions onCancel={onClose} okLabel="Rotation erstellen" />}

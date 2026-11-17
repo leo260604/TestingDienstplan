@@ -9,7 +9,7 @@ import { canEdit, adminCaps, absenceTeams, manageableTeams, pagesFor, selfEditAl
 import { permsFor, roleLabel } from '@/lib/permissions';
 import { canRequestSwap, SWAP_ROLES } from '@/lib/swaps';
 import { HELP_SECTIONS, type HelpCaps } from '@/lib/help';
-import { safeFileName, saveFile } from '@/lib/export/csv';
+import { safeFileName, saveFile, toCsv } from '@/lib/export/csv';
 import { makePdf, makeXlsx, KIND_HEX } from '@/lib/export/formats';
 import { addRole, deleteRole, renameRole, savePermissions } from '@/server/actions/admin';
 import { logExport } from '@/server/actions/account';
@@ -393,7 +393,20 @@ export function AuditLog() {
 
 /* ======================= Export Audit ======================= */
 export function ExportAudit() {
-  const { data, f } = useApp();
+  const { data, f, toast, refresh } = useApp();
+  /* Einzelne Protokollzeile als CSV (wie bisher) */
+  const downloadRow = (x: (typeof data.exportLog)[number]) => {
+    saveFile(
+      safeFileName('Export Audit') + '.csv',
+      toCsv([
+        ['Zeitpunkt', 'Benutzer', 'Rolle', 'Bericht', 'Format', 'Zeilen', 'Zeitraum', 'Größe', 'Status'],
+        [f.fmtDateTime(x.ts), x.user, x.role, x.report, x.format, x.rows, x.range || '—', fmtSize(x.size), x.status],
+      ]),
+      'text/csv;charset=utf-8;',
+    );
+    void logExport({ report: 'Export Audit (Einzelzeile)', format: 'CSV', rows: 1, status: 'Erfolgreich' }).then(refresh);
+    toast('Report wurde heruntergeladen.');
+  };
   const [fmt, setFmt] = useState('Alle');
   const [status, setStatus] = useState('Alle');
   const [q, setQ] = useState('');
@@ -471,6 +484,9 @@ export function ExportAudit() {
                 <th>Zeitraum</th>
                 <th>Größe</th>
                 <th>Status</th>
+                <th>
+                  <span className="sr-only">Aktion</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -500,11 +516,16 @@ export function ExportAudit() {
                     <td>
                       <span className={`pill ${x.status === 'Erfolgreich' ? 'act-erfolgreich' : x.status === 'Verweigert' ? 'act-gelöscht' : 'act-hinweis'}`}>{x.status}</span>
                     </td>
+                    <td>
+                      <button type="button" className="icon-btn" title="Protokollzeile als CSV" aria-label="Protokollzeile als CSV" onClick={() => downloadRow(x)}>
+                        <Icon name="download" />
+                      </button>
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={6} className="empty-note">
+                  <td colSpan={7} className="empty-note">
                     {log.length ? 'Keine Einträge für diesen Filter.' : 'Noch keine Exporte. Unter „Berichte / Export“ einen Export starten.'}
                   </td>
                 </tr>

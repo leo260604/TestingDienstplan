@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '../AppProvider';
 import { useShell } from '../shell/AppShell';
-import { Avatar, Dot, Heading, Icon, InfoDialog, TeamFilter, useClientDate, useOutside } from '../ui';
+import { Avatar, DayPickerPop, Dot, Heading, Icon, InfoDialog, MonthPickerPop, TeamFilter, useClientDate, useOutside } from '../ui';
 import { AbsenceDialog, DutyDialog, DutyRotationDialog, StandbyRotationDialog, WorkplaceDialog, type DutyPreset } from './dialogs';
 import { NoteDialog, NotesPopup, TeamNoteDialog, TeamNotesPopup, noteKey } from './notes';
 import { addDays, day, durationHours, isoDate, isoWeek, weekStart } from '@/lib/dates';
@@ -62,6 +62,20 @@ export function Calendar({ area }: { area: Area }) {
   const nowDate = useClientDate();
   const today = nowDate ? isoDate(nowDate) : '';
   const [limit, setLimit] = useState(99);
+
+  /* Strg Z / ⌘ Z: letzte eigene Änderung zurücknehmen (nur Dienstplan & Bereitschaft, nicht in Eingabefeldern) */
+  const { undo } = app;
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'z') return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest('input,textarea,select,[contenteditable]') || document.querySelector('.modal-backdrop,.cp-layer,.dpk-pop')) return;
+      e.preventDefault();
+      void undo();
+    };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, [undo]);
 
   /* Startzustand: eigenes Team, Standardansicht, Datum aus der URL (z. B. aus einer Benachrichtigung) */
   useEffect(() => {
@@ -184,7 +198,7 @@ export function Calendar({ area }: { area: Area }) {
     const own = a.kind === 'Arbeitsort' && a.employee === user.name;
     const absenceOk = a.isAbsence && canCreateAbsenceFor(ctx, data.staff.find((p) => p.name === a.employee));
     if (!canManageTeam(ctx, a.team) && !own && !absenceOk && !(!a.isAbsence && a.kind !== 'Arbeitsort' && canEditEntry(ctx, a.team, a.employee, areaOf(a)))) return toast('Du darfst Einträge dieses Teams nicht löschen.');
-    if (await ask(`${a.isAbsence ? 'Abwesenheit' : a.kind === 'Arbeitsort' ? `Arbeitsort („${a.shift}“)` : 'Eintrag'} von ${a.employee} am ${f.fmtIsoDate(a.date)} wirklich löschen?`)) await run(deleteEntry(a.id));
+    if (await ask(`${a.isAbsence ? 'Abwesenheit' : a.kind === 'Arbeitsort' ? `Arbeitsort („${a.shift}“)` : 'Eintrag'} von ${a.employee} am ${f.fmtIsoDate(a.date)} wirklich löschen?`)) await run(deleteEntry(a.id), { undo: `${a.employee} · ${a.shift} gelöscht`, undoHint: true });
   };
 
   const doMove = async (id: string, date: string, emp?: string) => {
@@ -194,7 +208,7 @@ export function Calendar({ area }: { area: Area }) {
     if (a.date === date && target === a.employee) return;
     const fullAbs = data.entries.some((x) => x.isAbsence && x.employee === target && x.date === date && !x.start && x.shift !== 'Urlaub 1/2 Tag');
     if (a.kind !== 'Arbeitsort' && fullAbs && !(await ask(`${target} ist am ${f.fmtIsoDate(date)} abwesend. Trotzdem verschieben?`, 'Verschieben'))) return;
-    await run(moveEntry(id, date, emp));
+    await run(moveEntry(id, date, emp), { undo: `${a.shift} verschoben`, undoHint: true });
   };
 
   /* ---------- Bausteine ---------- */
@@ -674,7 +688,9 @@ export function Calendar({ area }: { area: Area }) {
     ) : (
       f.fmtWithWeekday(cur)
     );
-  const pickRef = useRef<HTMLInputElement>(null);
+  const pickRef = useRef<HTMLButtonElement>(null);
+  const [pickOpen, setPickOpen] = useState(false);
+  const closePick = useCallback(() => setPickOpen(false), []);
   const conflictCount = [...conflicts].filter((id) => {
     const a = data.entries.find((x) => x.id === id);
     return a && !a.isAbsence && teamOk(a.team);
@@ -712,29 +728,25 @@ export function Calendar({ area }: { area: Area }) {
               ‹
             </button>
             <button
+              ref={pickRef}
               type="button"
-              className="cal-pick"
+              className={`cal-pick${pickOpen ? ' open' : ''}`}
               title={view === 'Tag' ? 'Tag auswählen' : view === 'Monat' ? 'Monat auswählen' : 'Kalenderwoche auswählen'}
-              onClick={() => {
-                const el = pickRef.current;
-                try {
-                  el?.showPicker();
-                } catch {
-                  el?.click();
-                }
+              aria-haspopup="dialog"
+              aria-expanded={pickOpen}
+              onClick={(e) => {
+                e.stopPropagation();
+                setPickOpen((o) => !o);
               }}
             >
               <strong>{rangeLabel}</strong>
             </button>
-            <input
-              ref={pickRef}
-              type={view === 'Monat' ? 'month' : 'date'}
-              className="sr-only"
-              tabIndex={-1}
-              aria-hidden="true"
-              value={view === 'Monat' ? isoDate(cur).slice(0, 7) : isoDate(cur)}
-              onChange={(e) => e.target.value && set({ date: view === 'Monat' ? e.target.value + '-01' : e.target.value, mobileDate: '' })}
-            />
+            {pickOpen &&
+              (view === 'Monat' ? (
+                <MonthPickerPop anchor={pickRef.current} value={isoDate(cur)} onClose={closePick} onPick={(v) => set({ date: v, mobileDate: '' })} />
+              ) : (
+                <DayPickerPop anchor={pickRef.current} value={isoDate(cur)} week={view !== 'Tag'} onClose={closePick} onPick={(v) => v && set({ date: v, mobileDate: '' })} />
+              ))}
             <button className="btn" aria-label="Weiter" onClick={() => step(1)}>
               ›
             </button>

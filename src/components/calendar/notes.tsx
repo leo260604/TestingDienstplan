@@ -2,7 +2,7 @@
 /* Notizen (pro Person und Tag) und Teamnotizen (pro Team und Tag) */
 import { useState } from 'react';
 import { useApp } from '../AppProvider';
-import { Field, Icon, Modal, ModalActions, Picker } from '../ui';
+import { DateField, Field, Icon, Modal, ModalActions, Picker } from '../ui';
 import { day, isoDate } from '@/lib/dates';
 import { canNoteFor, teamNoteTeams, personByName } from '@/lib/access';
 import { deleteEntry, deleteTeamNote, saveNote, saveTeamNote } from '@/server/actions/entries';
@@ -121,7 +121,7 @@ export function NoteDialog({ note, date, forWho, onClose }: { note?: Entry; date
         </Field>
       )}
       <Field label="Datum">
-        <input type="date" value={d} required onChange={(e) => setD(e.target.value)} />
+        <DateField value={d} required ariaLabel="Datum" onChange={setD} />
       </Field>
       <Field label="Notiz" note="Max. 500 Zeichen">
         <textarea rows={4} maxLength={500} required placeholder="z. B. Arzttermin ab 15 Uhr, Schulung, Übergabe …" value={text} onChange={(e) => setText(e.target.value)} />
@@ -201,7 +201,7 @@ export function TeamNoteDialog({ note, date, preferTeam, onClose }: { note?: Tea
         </Field>
       )}
       <Field label="Datum">
-        <input type="date" value={d} required onChange={(e) => setD(e.target.value)} />
+        <DateField value={d} required ariaLabel="Datum" onChange={setD} />
       </Field>
       <Field label="Notiz" note="Wird im Kalender unter dem Datum angezeigt. Max. 300 Zeichen.">
         <textarea rows={3} maxLength={300} required placeholder="z. B. Teambesprechung 09:00, Wartung ab 14 Uhr …" value={text} onChange={(e) => setText(e.target.value)} />

@@ -2,7 +2,7 @@
 /* Berichte / Export: Filter, Kennzahlen, Einträge-Tabelle, Export-Zentrale (PDF / Excel / CSV) */
 import { useMemo, useState, type CSSProperties } from 'react';
 import { useApp } from '../AppProvider';
-import { Heading, Icon, TeamFilter } from '../ui';
+import { DateField, Heading, Icon, TeamFilter } from '../ui';
 import { addDays, day, durationHours, isoDate, weekStart } from '@/lib/dates';
 import { kindLabel, netHours, tRange } from '@/lib/entries';
 import { KIND_HEX, KIND_LIGHT } from '@/lib/export/formats';
@@ -96,9 +96,9 @@ export function Reports() {
       <section className="panel filter-panel report-filters">
         <span className="date-range">
           <Icon name="cal" />
-          <input type="date" value={from} aria-label="Von" onChange={(e) => { setFrom(e.target.value); if (to && e.target.value > to) setTo(e.target.value); setPage(0); }} />
+          <DateField compact required value={from} ariaLabel="Von" rangeFrom={from} rangeTo={to} onChange={(v) => { setFrom(v); if (to && v > to) setTo(v); setPage(0); }} />
           <span>–</span>
-          <input type="date" value={to} aria-label="Bis" onChange={(e) => { setTo(e.target.value); setPage(0); }} />
+          <DateField compact required value={to} ariaLabel="Bis" min={from || undefined} rangeFrom={from} rangeTo={to} onChange={(v) => { setTo(v); setPage(0); }} />
         </span>
         <button type="button" className={`chip ${isQ('week') ? 'active' : ''}`} onClick={() => setRange('week')}>
           Diese Woche

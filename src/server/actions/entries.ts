@@ -140,16 +140,20 @@ export async function saveDuty(inp: SaveDutyInput): Promise<ActionResult<{ count
   });
 }
 
+/** Darf die angemeldete Person diesen Eintrag ändern bzw. löschen? */
+function mayChangeEntry(c: Ctx, item: Entry): boolean {
+  const own = item.kind === 'Arbeitsort' && item.employee === c.user.name;
+  const absenceOk = !!item.isAbsence && canCreateAbsenceFor(c, c.data.staff.find((p) => p.name === item.employee));
+  const noteOk = item.kind === 'Notiz' && canNoteFor(c, item.employee);
+  return canManageTeam(c, item.team) || own || absenceOk || noteOk || (!item.isAbsence && item.kind !== 'Arbeitsort' && canEditEntry(c, item.team, item.employee, areaOf(item)));
+}
+
 /* ---------------- Löschen ---------------- */
 export async function deleteEntry(id: string): Promise<ActionResult> {
   return withCtx(async (c) => {
     const item = c.data.entries.find((a) => a.id === id);
     if (!item) return fail('Der Eintrag wurde nicht gefunden.');
-    const own = item.kind === 'Arbeitsort' && item.employee === c.user.name;
-    const absenceOk = item.isAbsence && canCreateAbsenceFor(c, c.data.staff.find((p) => p.name === item.employee));
-    const noteOk = item.kind === 'Notiz' && canNoteFor(c, item.employee);
-    if (!canManageTeam(c, item.team) && !own && !absenceOk && !noteOk && !(!item.isAbsence && item.kind !== 'Arbeitsort' && canEditEntry(c, item.team, item.employee, areaOf(item))))
-      return fail('Du darfst Einträge dieses Teams nicht löschen.');
+    if (!mayChangeEntry(c, item)) return fail('Du darfst Einträge dieses Teams nicht löschen.');
     await prisma.entry.delete({ where: { id } });
     await audit(c, 'Gelöscht', item.kind === 'Bereitschaft' ? 'Bereitschaft' : 'Dienstplan', `${item.employee} · ${item.shift}${item.start ? ' ' + item.start + '–' + item.end : ''} · ${F.fmtIsoDate(item.date)}`, item.kind === 'Notiz' ? { title: 'Notiz gelöscht', object: item.employee, before: item.note } : {});
     return ok(item.kind === 'Arbeitsort' ? 'Arbeitsort wurde entfernt.' : item.kind === 'Notiz' ? 'Notiz gelöscht.' : 'Eintrag wurde gelöscht.');
@@ -424,5 +428,35 @@ export async function archiveOldEntries(): Promise<ActionResult<{ count: number 
     await prisma.entry.deleteMany({ where: { date: { lt: isoToDate(cutIso) } } });
     await audit(c, 'Gelöscht', 'Dienstplan', `${old.length} Einträge vor dem ${F.fmt(cut)} archiviert`, { title: 'Alte Einträge archiviert' });
     return ok(`${old.length} Einträge archiviert.`, { count: old.length });
+  });
+}
+
+/* ---------------- Rückgängig (Strg Z) ----------------
+   Stellt den Zustand vor der letzten eigenen Änderung wieder her: neu angelegte Einträge werden
+   entfernt, gelöschte bzw. geänderte Einträge mit ihrer ursprünglichen ID wiederhergestellt. */
+export async function restoreEntries(inp: { label: string; remove: string[]; upsert: Entry[] }): Promise<ActionResult> {
+  return withCtx(async (c) => {
+    const label = String(inp?.label || 'Änderung').slice(0, 120);
+    const remove = Array.isArray(inp?.remove) ? inp.remove.filter((x) => typeof x === 'string').slice(0, 2000) : [];
+    const upsert = Array.isArray(inp?.upsert) ? inp.upsert.filter((e) => e && typeof e.id === 'string' && e.id && validDateInput(e.date)).slice(0, 2000) : [];
+    if (!remove.length && !upsert.length) return fail('Nichts zum Rückgängigmachen.');
+    const removeItems = remove.map((id) => c.data.entries.find((a) => a.id === id)).filter((a): a is Entry => !!a);
+    for (const e of removeItems) if (!mayChangeEntry(c, e)) return fail('Du darfst diese Änderung nicht zurücknehmen.');
+    for (const e of upsert) {
+      if (!mayChangeEntry(c, e)) return fail('Du darfst diese Änderung nicht zurücknehmen.');
+      const now = c.data.entries.find((a) => a.id === e.id);
+      if (now && !mayChangeEntry(c, now)) return fail('Du darfst diese Änderung nicht zurücknehmen.');
+    }
+    const authorOf = (e: Entry) => (e.author ? c.data.staff.find((p) => p.name === e.author)?.id : undefined);
+    await prisma.$transaction([
+      ...(removeItems.length ? [prisma.entry.deleteMany({ where: { id: { in: removeItems.map((e) => e.id) } } })] : []),
+      ...upsert.map((e) => {
+        const data = entryData(c, e, authorOf(e));
+        return prisma.entry.upsert({ where: { id: e.id }, create: { id: e.id, ...data }, update: data });
+      }),
+    ]);
+    const area = [...removeItems, ...upsert].some((e) => e.kind === 'Bereitschaft') ? 'Bereitschaft' : 'Dienstplan';
+    await audit(c, 'Geändert', area, 'Rückgängig: ' + label, { title: 'Änderung rückgängig gemacht', object: label });
+    return ok('Rückgängig: ' + label);
   });
 }

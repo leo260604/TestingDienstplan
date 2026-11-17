@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useApp } from '../AppProvider';
 import { Avatar, Icon, Toggle, resizeImage, useClientDate, useOutside } from '../ui';
 import { SwapCenter, SwapRequestDialog } from '../calendar/Swap';
+import { MobileTables, PageTopButton } from './PageExtras';
 import { PAGE_ROUTES, pageFromPath, roleLabel, visibleRole } from '@/lib/permissions';
 import { currentUserTeamNames, pagesFor } from '@/lib/access';
 import { isoWeek } from '@/lib/dates';
@@ -181,6 +182,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </main>
       </div>
+      <PageTopButton page={page} isAdmin={user.role === 'Admin'} />
+      <MobileTables page={page} />
       {search && <GlobalSearch onClose={() => setSearch(false)} />}
       {whatsNew && (
         <WhatsNew

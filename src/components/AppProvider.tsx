@@ -7,10 +7,29 @@ import { createFormatters, type Formatters } from '@/lib/dates';
 import { teamColor as teamColorOf } from '@/lib/entries';
 import { setLang } from '@/lib/i18n/dictionary';
 import { savePrefs } from '@/server/actions/account';
+import { restoreEntries } from '@/server/actions/entries';
 import type { ActionResult } from '@/server/context';
-import type { AppData, Ctx, CurrentUser, Team, UserPrefs } from '@/lib/types';
+import type { AppData, Ctx, CurrentUser, Entry, Team, UserPrefs } from '@/lib/types';
 
 type CalPageState = { teams: string[]; member: string; onlyConflicts: boolean; view: string; date: string; mobileDate: string };
+
+/** Ein Schritt im Rückgängig-Verlauf: Zustand vor der Änderung, danach berechnete Gegenoperation */
+interface UndoStep {
+  label: string;
+  before: Entry[];
+  inverse?: { remove: string[]; upsert: Entry[] };
+}
+const entrySig = (e: Entry) => JSON.stringify([e.kind, !!e.isAbsence, e.team, e.employee, e.date, e.shift, e.start || '', e.end || '', e.color || '', e.note || '', e.groupId || '', e.groupName || '']);
+function diffEntries(before: Entry[], after: Entry[]) {
+  const b = new Map(before.map((e) => [e.id, e]));
+  const a = new Map(after.map((e) => [e.id, e]));
+  const remove = after.filter((e) => !b.has(e.id)).map((e) => e.id);
+  const upsert = before.filter((e) => {
+    const now = a.get(e.id);
+    return !now || entrySig(now) !== entrySig(e);
+  });
+  return { remove, upsert };
+}
 
 interface DialogReq {
   kind: 'confirm' | 'text';
@@ -33,7 +52,9 @@ interface AppContextValue {
   ask: (message: string, okLabel?: string) => Promise<boolean>;
   askText: (title: string, value?: string) => Promise<string>;
   /** Server Action ausführen: Meldung anzeigen, Daten neu laden */
-  run: <T>(p: Promise<ActionResult<T>>, opts?: { silent?: boolean }) => Promise<ActionResult<T>>;
+  run: <T>(p: Promise<ActionResult<T>>, opts?: { silent?: boolean; undo?: string; undoHint?: boolean }) => Promise<ActionResult<T>>;
+  /** Letzte eigene Änderung an Diensten/Bereitschaften zurücknehmen (Strg Z) */
+  undo: () => Promise<void>;
   refresh: () => void;
   busy: boolean;
   teamColor: (t?: Team | string) => string;
@@ -58,6 +79,8 @@ export function AppProvider({ data, user, prefs: initialPrefs, demoLogin, childr
   const [busy, setBusy] = useState(false);
   const [cal, setCalState] = useState<Record<string, CalPageState>>({});
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const undoStack = useRef<UndoStep[]>([]);
+  const entriesRef = useRef(data.entries);
 
   setLang(prefs.lang);
   const f = useMemo(() => createFormatters(prefs.dateFormat, prefs.lang), [prefs.dateFormat, prefs.lang]);
@@ -90,13 +113,31 @@ export function AppProvider({ data, user, prefs: initialPrefs, demoLogin, childr
     [],
   );
 
+  /* Nach dem Neuladen der Daten: Gegenoperation für offene Rückgängig-Schritte berechnen */
+  useEffect(() => {
+    entriesRef.current = data.entries;
+    for (const step of undoStack.current) {
+      if (step.inverse) continue;
+      const inv = diffEntries(step.before, data.entries);
+      if (inv.remove.length || inv.upsert.length) step.inverse = inv;
+    }
+  }, [data.entries]);
+
   const refresh = useCallback(() => router.refresh(), [router]);
   const run = useCallback(
-    async <T,>(p: Promise<ActionResult<T>>, opts: { silent?: boolean } = {}) => {
+    async <T,>(p: Promise<ActionResult<T>>, opts: { silent?: boolean; undo?: string; undoHint?: boolean } = {}) => {
+      const before = opts.undo ? entriesRef.current : null;
       setBusy(true);
       try {
         const res = await p;
-        if (res.message && (!opts.silent || !res.ok)) toast(res.message);
+        if (res.ok && before && opts.undo) {
+          // höchstens 25 Schritte merken (wie bisher). Sind die neuen Daten schon da, Gegenoperation gleich berechnen.
+          const step: UndoStep = { label: opts.undo, before };
+          const inv = diffEntries(before, entriesRef.current);
+          if (inv.remove.length || inv.upsert.length) step.inverse = inv;
+          undoStack.current = [...undoStack.current, step].slice(-25);
+        }
+        if (res.message && (!opts.silent || !res.ok)) toast(res.ok && opts.undoHint && !window.matchMedia('(pointer: coarse)').matches ? `${res.message.replace(/\.$/, '')}. Strg Z macht es rückgängig.` : res.message);
         if (res.ok) router.refresh();
         return res;
       } catch (e) {
@@ -109,6 +150,28 @@ export function AppProvider({ data, user, prefs: initialPrefs, demoLogin, childr
     },
     [router, toast],
   );
+
+  const undo = useCallback(async () => {
+    const step = undoStack.current[undoStack.current.length - 1];
+    if (!step) return toast('Nichts zum Rückgängigmachen.');
+    if (!step.inverse) {
+      // Änderung noch nicht neu geladen oder ohne Auswirkung
+      undoStack.current = undoStack.current.slice(0, -1);
+      return toast('Nichts zum Rückgängigmachen.');
+    }
+    undoStack.current = undoStack.current.slice(0, -1);
+    setBusy(true);
+    try {
+      const res = await restoreEntries({ label: step.label, ...step.inverse });
+      toast(res.message || (res.ok ? 'Rückgängig: ' + step.label : 'Rückgängig nicht möglich.'));
+      if (res.ok) router.refresh();
+    } catch (e) {
+      console.error(e);
+      toast('Die Änderung konnte nicht rückgängig gemacht werden.');
+    } finally {
+      setBusy(false);
+    }
+  }, [router, toast]);
 
   const teamColor = useCallback(
     (t?: Team | string) => teamColorOf(typeof t === 'string' ? data.teams.find((x) => x.name === t) : t, data.shiftTypes),
@@ -146,7 +209,7 @@ export function AppProvider({ data, user, prefs: initialPrefs, demoLogin, childr
     return () => mq.removeEventListener('change', apply);
   }, [prefs.theme, prefs.accent, prefs.fontScale, prefs.lang]);
 
-  const value: AppContextValue = { data, user, ctx, prefs, setPrefs, f, toast, ask, askText, run, refresh, busy, teamColor, cal, setCal, demoLogin };
+  const value: AppContextValue = { data, user, ctx, prefs, setPrefs, f, toast, ask, askText, run, undo, refresh, busy, teamColor, cal, setCal, demoLogin };
 
   return (
     <AppContext.Provider value={value}>
