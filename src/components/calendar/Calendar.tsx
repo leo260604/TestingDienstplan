@@ -320,16 +320,17 @@ export function Calendar({ area }: { area: Area }) {
     return items;
   };
 
-  const noteStub = (g: NoteGroup, agenda?: boolean) => (
-    <button key={g.id} type="button" className={`calendar-assignment note-assignment note-stub${agenda ? ' note-agenda' : ''}`} data-notes-open={g.employee + '|' + g.date} aria-label={`Notizen von ${g.employee} anzeigen`} onClick={() => setDlg({ t: 'notes', k: g.employee + '|' + g.date })}>
-      <span className="note-indicator">
+  /* Notizen ohne eigenen Eintrag am Tag: nur das Notiz-Symbol mit Namen (wie im Dienst), keine eigene Karte */
+  const noteStub = (g: NoteGroup, agenda?: boolean) => {
+    const k = g.employee + '|' + g.date;
+    return (
+      <button key={g.id} type="button" className={`note-chip note-solo${agenda ? ' note-agenda' : ''}`} data-notes-open={k} aria-label={`${g.notes.length > 1 ? g.notes.length + ' Notizen' : 'Notiz'} von ${g.employee} anzeigen`} onClick={(e) => { e.stopPropagation(); setDlg({ t: 'notes', k }); }}>
         <Icon name="chat" />
-        Notizen{g.notes.length > 1 ? ` (${g.notes.length})` : ''}
-      </span>
-      <b>{g.employee}</b>
-      <small>{g.team}</small>
-    </button>
-  );
+        <span className="note-solo-name">{g.employee}</span>
+        {g.notes.length > 1 && <span>{g.notes.length}</span>}
+      </button>
+    );
+  };
 
   const dayCard = (a: Item) => {
     if (a.kind === 'NotizGruppe') return noteStub(a);
