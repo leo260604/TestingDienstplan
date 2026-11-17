@@ -105,20 +105,32 @@ export function Calendar({ area }: { area: Area }) {
   const n = isDuty ? prefs.dutyDays : prefs.standbyDays;
   const set = useCallback((patch: Partial<NonNullable<typeof st>>) => setCal(area, patch), [area, setCal]);
 
-  /* Wie viele Einträge pro Tag direkt sichtbar sind, hängt von der Fensterhöhe ab */
+  /* Wie viele Einträge pro Tag direkt sichtbar sind: am PC wird der Kalender an die Fensterhöhe angepasst
+     (siehe useLayoutEffect „Kalender einpassen“ weiter unten), sonst grobe Schätzung nach Fensterhöhe */
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [fitTick, setFitTick] = useState(0);
+  const fitRef = useRef<{ key: string; guard: number }>({ key: '', guard: 0 });
   useEffect(() => {
-    const calc = () => {
-      const h = window.innerHeight || 800;
-      if (view === 'Woche') setLimit(Math.max(4, Math.floor((h - 330) / 68)));
-      else if (view === 'Monat') {
-        const weeks = Math.ceil((new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate() + 6) / 7);
-        setLimit(Math.max(2, Math.floor(((h - 330) / weeks - 34) / 50)));
-      } else setLimit(99);
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const onResize = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        if (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+        setFitTick((x) => x + 1);
+      }, 150);
     };
-    calc();
-    window.addEventListener('resize', calc);
-    return () => window.removeEventListener('resize', calc);
-  }, [view, cur]);
+    window.addEventListener('resize', onResize);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('resize', onResize);
+    };
+  }, []);
+  useEffect(
+    () => () => {
+      document.body.classList.remove('cal-fit', 'cal-tight', 'cal-one-team');
+    },
+    [],
+  );
 
   const teamOk = (team: string) => !calTeams.length || calTeams.includes(team);
   const conflicts = useMemo(() => computeConflicts(data.entries), [data.entries]);
@@ -698,6 +710,150 @@ export function Calendar({ area }: { area: Area }) {
   }).length;
   const memberOptions = data.staff.filter((s) => !calTeams.length || data.teams.some((t) => calTeams.includes(t.name) && t.memberIds.includes(s.id)));
 
+  /* ===== Kalender einpassen (wie bisher): Seite ohne Scrollen, was nicht passt steht unter „+ x weitere“ =====
+     Woche: Kalender so hoch wie das Fenster, Anzahl sichtbarer Einträge aus dem gemessenen Platz pro Tag.
+     Monat: jede Woche bekommt mindestens ihren Inhalt, der restliche Platz wird gleichmäßig verteilt.
+     Passt selbst ein Eintrag pro Tag nicht hinein, wird der Kalender höher (mind. 1 Eintrag bleibt sichtbar). */
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    const body = document.body;
+    const grid = card?.querySelector<HTMLElement>('.month-grid');
+    if (grid) {
+      grid.style.gridTemplateRows = '';
+      grid.style.gridAutoRows = '';
+      grid.style.flex = '';
+    }
+    if (card) {
+      card.style.height = '';
+      card.style.minHeight = '';
+    }
+    const fillView = (view === 'Woche' || view === 'Monat') && !prefs.expandedMonthView;
+    if (!card || !fillView || window.innerWidth < 901) {
+      body.classList.remove('cal-fit', 'cal-one-team');
+      fitRef.current = { key: '', guard: 0 };
+      const h = window.innerHeight || 800;
+      const want = view === 'Woche' ? Math.max(4, Math.floor((h - 330) / 68)) : view === 'Monat' ? Math.max(2, Math.floor(((h - 330) / Math.ceil((new Date(cur.getFullYear(), cur.getMonth() + 1, 0).getDate() + 6) / 7) - 34) / 50)) : 99;
+      if (limit !== want) setLimit(want);
+      return;
+    }
+    body.classList.add('cal-fit');
+    body.classList.toggle('cal-one-team', calTeams.length === 1);
+    /* verfügbare Höhe: Kalender + Platz bis zum unteren Fensterrand */
+    const content = document.getElementById('content');
+    const main = content?.parentElement;
+    let bottom = 0;
+    if (content) {
+      const pf = content.style.flex,
+        pm = content.style.minHeight;
+      content.style.flex = 'none';
+      content.style.minHeight = '0';
+      [...(main ? main.children : [])].forEach((e) => {
+        const el = e as HTMLElement;
+        if (el.offsetParent || getComputedStyle(el).position === 'sticky') {
+          const r = el.getBoundingClientRect();
+          if (r.height) bottom = Math.max(bottom, r.bottom + window.scrollY);
+        }
+      });
+      const h0 = card.getBoundingClientRect().height;
+      content.style.flex = pf;
+      content.style.minHeight = pm;
+      const tgt = Math.floor(h0 + (window.innerHeight - bottom) - 2);
+      if (tgt < 280) {
+        body.classList.remove('cal-fit', 'cal-one-team');
+        return;
+      }
+      card.style.height = tgt + 'px';
+      card.style.minHeight = '0';
+    }
+    const key = `${area}|${view}|${window.innerWidth}x${window.innerHeight}|${isoDate(cur)}|${visible.length}|${calTeams.join(',')}|${member}|${n}|${fitTick}`;
+    const fresh = fitRef.current.key !== key;
+    if (fresh) fitRef.current = { key, guard: 0 };
+    const step = () => ++fitRef.current.guard < 14;
+    const grow = (over: number) => {
+      if (over > 0) card.style.height = card.offsetHeight + over + 4 + 'px';
+    };
+
+    if (view === 'Monat' && grid) {
+      if (fresh && limit !== 4) {
+        setLimit(4);
+        return;
+      }
+      const cells = [...grid.children].filter((c) => c.classList.contains('month-cell')) as HTMLElement[];
+      if (!cells.length) return;
+      grid.style.gridTemplateRows = 'auto';
+      grid.style.gridAutoRows = 'auto';
+      grid.style.flex = 'none';
+      const tops = [...new Set(cells.map((c) => c.offsetTop))].sort((a, b) => a - b);
+      const rows = tops.map((t) =>
+        Math.max(
+          ...cells
+            .filter((c) => c.offsetTop === t)
+            .map((c) => {
+              const st = getComputedStyle(c);
+              let h = parseFloat(st.paddingTop) + parseFloat(st.paddingBottom) + parseFloat(st.borderTopWidth) + parseFloat(st.borderBottomWidth);
+              [...c.children].forEach((ch) => {
+                const s2 = getComputedStyle(ch);
+                if (s2.position !== 'absolute') h += (ch as HTMLElement).offsetHeight + parseFloat(s2.marginTop) + parseFloat(s2.marginBottom);
+              });
+              return Math.ceil(h);
+            }),
+          56,
+        ),
+      );
+      const first = grid.firstElementChild as HTMLElement | null;
+      const headH = cells[0].offsetTop - (first ? first.offsetTop : 0);
+      grid.style.flex = '';
+      grid.style.gridAutoRows = '';
+      grid.style.gridTemplateRows = 'auto ' + rows.map((h) => `minmax(${h}px,1fr)`).join(' ');
+      const sc = grid.parentElement as HTMLElement;
+      const avail = sc.clientHeight - headH - 2,
+        need = rows.reduce((a, b) => a + b, 0);
+      if (need > avail) {
+        if (limit > 1 && step()) setLimit(limit - 1);
+        else grow(need - avail);
+      }
+      return;
+    }
+
+    if (view === 'Woche') {
+      const cells = [...card.querySelectorAll<HTMLElement>('.week-day-cell')].filter((c) => c.offsetParent);
+      if (!cells.length) return;
+      const clipped = () => cells.some((c) => c.scrollHeight > c.clientHeight + 1);
+      if (fresh) {
+        /* Platz pro Tag messen und passende Anzahl Einträge bestimmen */
+        const cardsEls = [...card.querySelectorAll<HTMLElement>('.week-day-cell .calendar-assignment')].filter((e) => e.offsetParent);
+        const sample = cardsEls.slice(0, 20);
+        const cs = sample.length ? sample.reduce((t, e) => { const st = getComputedStyle(e); return t + e.offsetHeight + parseFloat(st.marginTop) + parseFloat(st.marginBottom); }, 0) / sample.length : 68;
+        let avail = Infinity;
+        cells.forEach((c) => {
+          const st = getComputedStyle(c);
+          let used = parseFloat(st.paddingTop) + parseFloat(st.paddingBottom);
+          [...c.children].forEach((ch) => {
+            if (!ch.matches('.calendar-assignment,.calendar-more')) {
+              const s2 = getComputedStyle(ch);
+              used += (ch as HTMLElement).offsetHeight + parseFloat(s2.marginTop) + parseFloat(s2.marginBottom);
+            }
+          });
+          avail = Math.min(avail, c.clientHeight - used);
+        });
+        const moreEl = card.querySelector<HTMLElement>('.calendar-more');
+        const moreH = moreEl ? moreEl.offsetHeight + 4 : 24;
+        const want = Math.max(1, Math.floor((avail - moreH) / cs) + 1);
+        if (want !== limit) {
+          setLimit(want);
+          return;
+        }
+      }
+      if (clipped()) {
+        if (limit > 1 && step()) setLimit(limit - 1);
+        else {
+          const over = Math.max(0, ...cells.map((c) => c.scrollHeight - c.clientHeight));
+          grow(over);
+        }
+      }
+    }
+  });
+
   return (
     <>
       <Heading
@@ -829,7 +985,7 @@ export function Calendar({ area }: { area: Area }) {
             </span>
           </div>
         </div>
-        <div className={`calendar-card ${view === 'Monat' ? 'month-compact-card' : ''} view-${view.toLowerCase()}`}>
+        <div ref={cardRef} className={`calendar-card ${view === 'Monat' ? 'month-compact-card' : ''} view-${view.toLowerCase()}`}>
           <div className="calendar-scroll">{body}</div>
         </div>
       </div>
