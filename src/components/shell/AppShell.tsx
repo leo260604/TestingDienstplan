@@ -604,24 +604,6 @@ function WhatsNew({ onClose }: { onClose: () => void }) {
               ))}
             </div>
             <ul className="wn-items wn-current">{cur.items.map(item)}</ul>
-            {CHANGELOG.slice(1).map((r) => (
-              <details className="wn-old" key={r.v}>
-                <summary>
-                  <span className="wn-old-dot" />
-                  <span className="wn-old-main">
-                    <b>Version {r.v}</b>
-                    <small>
-                      {r.date} · {r.title}
-                    </small>
-                  </span>
-                  <span className="wn-old-stats">
-                    {cnt(r, 'neu')} neu · {cnt(r, 'verbessert')} verbessert
-                  </span>
-                  <Icon name="down" />
-                </summary>
-                <ul className="wn-items">{r.items.map(item)}</ul>
-              </details>
-            ))}
           </div>
           <div className="btn-row modal-actions wp-actions">
             <span />
