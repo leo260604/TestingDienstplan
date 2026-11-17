@@ -1,0 +1,295 @@
+// ---------------------------------------------------------------------------
+// DienstPlan Pro – Datenmodell (PostgreSQL)
+// Abgeleitet aus dem bisherigen localStorage-Format der Browser-Version:
+//   dienstplanStaff → Employee, dienstplanTeams → Team/TeamMember,
+//   dienstplanAssignments → Entry, dienstplanShiftTypes → ShiftType, …
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Personen, Rollen, Teams ----------------------------------------
+
+model Role {
+  name        String     @id
+  /// Berechtigungen je Bereich: { "Dienstplan": "E" | "R" | "N", … }
+  permissions Json       @default("{}")
+  isSystem    Boolean    @default(false)
+  sortOrder   Int        @default(0)
+  employees   Employee[]
+}
+
+model Employee {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  email        String?  @unique
+  /// Bereitschaftsnummer
+  phone        String?
+  /// Telefonnummer für Microsoft Teams
+  teamsPhone   String?
+  /// Profilbild als data:-URL (max. 160×160 px)
+  photo        String?  @db.Text
+  roleName     String   @default("Mitarbeiter")
+  role         Role     @relation(fields: [roleName], references: [name], onUpdate: Cascade)
+  /// Optional: Passwort-Hash für die Anmeldung mit E-Mail + Passwort
+  passwordHash String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships       TeamMember[]
+  leaderOf          Team[]          @relation("TeamLeader")
+  deputyOf          Team[]          @relation("TeamDeputy")
+  headOf            Department[]
+  entries           Entry[]         @relation("EntryEmployee")
+  authoredEntries   Entry[]         @relation("EntryAuthor")
+  teamNotes         TeamNote[]
+  notifications     Notification[]
+  swapsFrom         SwapRequest[]   @relation("SwapFrom")
+  swapsTo           SwapRequest[]   @relation("SwapTo")
+  preference        UserPreference?
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("#0068A8")
+  headId    String?
+  head      Employee? @relation(fields: [headId], references: [id], onDelete: SetNull)
+  teams     Team[]
+  createdAt DateTime @default(now())
+}
+
+model Team {
+  id           String      @id @default(cuid())
+  name         String      @unique
+  standbyColor String?
+  /// { swap: boolean, selfDuty: 'none'|'all'|'selected', selfDutyIds: string[], selfStandby: …, selfStandbyIds: … }
+  settings     Json        @default("{}")
+  leaderId     String?
+  leader       Employee?   @relation("TeamLeader", fields: [leaderId], references: [id], onDelete: SetNull)
+  deputyId     String?
+  deputy       Employee?   @relation("TeamDeputy", fields: [deputyId], references: [id], onDelete: SetNull)
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  sortOrder    Int         @default(0)
+  createdAt    DateTime    @default(now())
+
+  members      TeamMember[]
+  shiftTypes   ShiftType[]
+  entries      Entry[]
+  teamNotes    TeamNote[]
+  standbyTimes StandbyTimeTeam[]
+}
+
+model TeamMember {
+  teamId     String
+  employeeId String
+  sortOrder  Int      @default(0)
+  team       Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, employeeId])
+  @@index([employeeId])
+}
+
+// ---------- Dienstzeiten & Bereitschaftszeiten -----------------------------
+
+model ShiftType {
+  id        String  @id @default(cuid())
+  teamId    String
+  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  name      String
+  start     String  // "HH:MM"
+  end       String  // "HH:MM"
+  pauseMin  Int     @default(30)
+  /// false = pro Tag und Team nur einmal besetzbar
+  multi     Boolean @default(true)
+  color     String  @default("#3974c6")
+
+  @@unique([teamId, name])
+}
+
+model StandbyGroup {
+  id    String        @id @default(cuid())
+  name  String        @unique
+  times StandbyTime[]
+}
+
+enum StandbyType {
+  FIX
+  VARIABEL
+}
+
+model StandbyTime {
+  id        String            @id @default(cuid())
+  name      String            @unique
+  type      StandbyType       @default(FIX)
+  start     String?
+  end       String?
+  color     String            @default("#159da8")
+  /// Wochentage 0 = Mo … 6 = So
+  days      Int[]             @default([0, 1, 2, 3, 4, 5, 6])
+  /// an Feiertagen (Mo–Fr) erlaubt
+  holidays  Boolean           @default(true)
+  /// true = gilt für alle Teams (auch später angelegte)
+  allTeams  Boolean           @default(true)
+  groupId   String?
+  group     StandbyGroup?     @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  teams     StandbyTimeTeam[]
+}
+
+model StandbyTimeTeam {
+  standbyTimeId String
+  teamId        String
+  standbyTime   StandbyTime @relation(fields: [standbyTimeId], references: [id], onDelete: Cascade)
+  team          Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([standbyTimeId, teamId])
+}
+
+// ---------- Einträge (Dienste, Bereitschaften, Abwesenheiten, Arbeitsorte, Notizen)
+
+enum EntryKind {
+  DIENSTPLAN
+  BEREITSCHAFT
+  ARBEITSORT
+  NOTIZ
+}
+
+model Entry {
+  id         String    @id @default(cuid())
+  kind       EntryKind
+  isAbsence  Boolean   @default(false)
+  date       DateTime  @db.Date
+  employeeId String
+  employee   Employee  @relation("EntryEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  teamId     String?
+  team       Team?     @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  /// Dienstbezeichnung, Bereitschaftszeit, Abwesenheitsart oder Arbeitsort
+  shift      String
+  start      String?
+  end        String?
+  color      String?
+  note       String?   @db.Text
+  groupId    String?
+  groupName  String?
+  authorId   String?
+  author     Employee? @relation("EntryAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([date])
+  @@index([employeeId, date])
+  @@index([teamId, date])
+}
+
+model TeamNote {
+  id        String   @id @default(cuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  date      DateTime @db.Date
+  text      String
+  authorId  String?
+  author    Employee? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([date])
+}
+
+// ---------- Diensttausch & Benachrichtigungen ------------------------------
+
+enum SwapStatus {
+  OFFEN
+  ANGENOMMEN
+  ABGELEHNT
+  ZURUECKGEZOGEN
+  UNGUELTIG
+}
+
+model SwapRequest {
+  id        String     @id @default(cuid())
+  status    SwapStatus @default(OFFEN)
+  fromId    String
+  from      Employee   @relation("SwapFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toId      String
+  to        Employee   @relation("SwapTo", fields: [toId], references: [id], onDelete: Cascade)
+  /// Momentaufnahmen der Dienste [{ id, date, shift, start, end, team }]
+  give      Json
+  take      Json
+  note      String     @default("")
+  createdAt DateTime   @default(now())
+  decidedAt DateTime?
+}
+
+model Notification {
+  id            String   @id @default(cuid())
+  recipientId   String
+  recipient     Employee @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  recipientRole String
+  title         String
+  message       String
+  read          Boolean  @default(false)
+  targetPage    String   @default("Dienstplan")
+  targetDate    String?
+  entryId       String?
+  swapId        String?
+  createdAt     DateTime @default(now())
+
+  @@index([recipientId, createdAt])
+}
+
+// ---------- Protokolle -----------------------------------------------------
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  ts        DateTime @default(now())
+  userName  String
+  role      String
+  action    String   // Erstellt | Geändert | Gelöscht
+  area      String
+  detail    String   @default("")
+  title     String   @default("")
+  object    String   @default("")
+  before    String   @default("")
+  after     String   @default("")
+
+  @@index([ts])
+}
+
+model ExportLog {
+  id       String   @id @default(cuid())
+  ts       DateTime @default(now())
+  userName String
+  role     String
+  report   String
+  format   String
+  rows     Int      @default(0)
+  status   String
+  range    String   @default("")
+  size     Int      @default(0)
+
+  @@index([ts])
+}
+
+// ---------- Einstellungen --------------------------------------------------
+
+/// Globale Einstellungen (z. B. features, cockpitLink)
+model AppSetting {
+  key   String @id
+  value Json
+}
+
+/// Persönliche Einstellungen (Theme, Datumsformat, Favoriten, Dashboard-Layout …)
+model UserPreference {
+  employeeId String   @id
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  data       Json     @default("{}")
+  updatedAt  DateTime @updatedAt
+}
