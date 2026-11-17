@@ -6,8 +6,8 @@ import { PrismaClient } from '@/generated/prisma/client';
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createClient() {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) throw new Error('DATABASE_URL ist nicht gesetzt (siehe .env.example).');
+  // Ohne DATABASE_URL (z. B. beim Build) wird erst bei der ersten Abfrage ein Fehler gemeldet.
+  const connectionString = process.env.DATABASE_URL || 'postgresql://missing-database-url@localhost:5432/missing';
   return new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 }
 
