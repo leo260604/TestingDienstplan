@@ -11,6 +11,11 @@ import { DEFAULT_PERMS, SYSTEM_ROLES } from '../src/lib/permissions';
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }) });
 
 async function main() {
+  // SEED_ONLY_IF_EMPTY=true: nur eine leere Datenbank befüllen (z. B. bei jedem Deploy sicher aufrufbar)
+  if (process.env.SEED_ONLY_IF_EMPTY === 'true' && (await prisma.employee.count()) > 0) {
+    console.log('Seed übersprungen – Datenbank enthält bereits Daten.');
+    return;
+  }
   const demo = buildDemoData({ withEntries: process.env.SEED_DEMO_ENTRIES === 'true' });
   console.log(`Seed: ${demo.teams.length} Teams, ${demo.staff.length} Personen, ${demo.entries.length} Einträge`);
 
