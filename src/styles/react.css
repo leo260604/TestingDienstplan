@@ -1,0 +1,25 @@
+/* Ergänzungen für die React-Version (ersetzt per JavaScript gesetzte Positionen der Browser-Version) */
+.team-dd>.team-dd-summary{list-style:none;display:flex;align-items:center;gap:8px;min-height:42px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);cursor:pointer;font-size:13.5px;font-weight:600;color:var(--ink)}
+.team-dd>.team-dd-summary::-webkit-details-marker{display:none}
+.team-dd>.team-dd-summary .team-dd-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.team-dd>.team-dd-summary .ic{width:16px;height:16px;flex:none;transition:transform .15s;color:var(--muted)}
+.dlg-team-dd>.team-dd-summary{min-height:46px;padding:5px 12px 5px 8px;border-width:1.5px;border-radius:12px;gap:10px;font-size:14px;font-weight:650}
+.dlg-team-dd>.team-dd-summary .pp-team{width:28px;height:28px;border-radius:8px}
+.dlg-team-dd>.team-dd-summary .pp-team .ic{width:15px;height:15px;color:var(--c);transform:none!important}
+.dlg-team-dd>.team-dd-summary:hover{border-color:color-mix(in srgb,var(--accent-color) 45%,var(--line))}
+.dlg-team-dd>.team-dd-summary{width:100%;box-sizing:border-box}
+.dlg-team-dd>.team-dd-summary:focus-visible{outline:0;border-color:var(--accent-color);box-shadow:0 0 0 3px var(--accent-ring)}
+.dlg-team-dd>.team-dd-summary .pp-team{--c:var(--accent-color)}
+.team-dd>.team-dd-summary{width:100%;box-sizing:border-box;text-align:left;color:var(--ink)}
+.pp-panel.pp-panel-inline{position:absolute;top:calc(100% + 6px);left:0;right:0;min-width:min(280px,calc(100vw - 32px));z-index:2000}
+.pp-panel-inline .pp-list{max-height:min(320px,45vh);overflow-y:auto}
+.dlg-team-dd .team-dd-panel{width:auto;right:0}
+.wp-form{overflow:visible}
+.duty-actions-menu.react-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:60}
+.calendar-assignment[draggable="true"]{cursor:grab}
+.drop-target{outline:2px dashed var(--accent-color);outline-offset:-2px}
+.color-swatch.custom input[type=color]{opacity:0;position:absolute;inset:0;width:100%;height:100%;cursor:pointer;border:0;padding:0}
+.color-swatch.custom{position:relative;background:var(--cv)}
+a.nav-item,a.btn,a.link-btn{text-decoration:none}
+a.nav-item{color:inherit}
+.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

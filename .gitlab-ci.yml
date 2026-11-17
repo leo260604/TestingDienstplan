@@ -72,8 +72,7 @@ build:
 e2e:
   stage: e2e
   image: mcr.microsoft.com/playwright:v1.63.0-noble
-  needs: [install, build]
-  cache: *node_cache
+  needs: [build]
   services:
     - name: postgres:17-alpine
       alias: postgres
@@ -83,6 +82,9 @@ e2e:
     POSTGRES_DB: dienstplan
     CI: "true"
   script:
+    # eigenes npm ci: das Playwright-Image ist glibc-basiert, der Cache stammt aus node:alpine
+    - npm ci --ignore-scripts
+    - npx prisma generate
     - npx prisma migrate deploy
     - npx prisma db seed
     - npm run test:e2e

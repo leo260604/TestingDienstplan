@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   // Eigenständiges Server-Bundle für das Docker-Image
   output: 'standalone',
   reactStrictMode: true,
+  agentRules: false,
   poweredByHeader: false,
   images: { unoptimized: true },
   async headers() {

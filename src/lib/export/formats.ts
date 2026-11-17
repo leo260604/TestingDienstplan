@@ -1,6 +1,6 @@
 /* Export-Formate ohne Fremdbibliotheken: ZIP-Writer (für .xlsx) und PDF-Writer.
    Aus der Browser-Version übernommen. */
-/* eslint-disable */
+ 
 import { F } from '../dates';
 
 export type Cell = string | number;
