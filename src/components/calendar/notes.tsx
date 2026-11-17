@@ -1,6 +1,7 @@
 'use client';
 /* Notizen (pro Person und Tag) und Teamnotizen (pro Team und Tag) */
-import { useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useApp } from '../AppProvider';
 import { DateField, Field, Icon, Modal, ModalActions, Picker } from '../ui';
 import { day, isoDate } from '@/lib/dates';
@@ -207,5 +208,82 @@ export function TeamNoteDialog({ note, date, preferTeam, onClose }: { note?: Tea
         <textarea rows={3} maxLength={300} required placeholder="z. B. Teambesprechung 09:00, Wartung ab 14 Uhr …" value={text} onChange={(e) => setText(e.target.value)} />
       </Field>
     </Modal>
+  );
+}
+
+/** Notiz-Vorschau beim Darüberfahren (nur Maus/Trackpad) – an allem mit data-notes-open="Name|Datum" */
+export function NoteTip() {
+  const { data } = useApp();
+  const [tip, setTip] = useState<{ k: string; x: number; y: number; show: boolean } | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+  const forEl = useRef<Element | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const anchor = useRef<DOMRect | null>(null);
+  useEffect(() => {
+    const hide = () => {
+      clearTimeout(timer.current);
+      forEl.current = null;
+      setTip(null);
+    };
+    const over = (e: MouseEvent) => {
+      if (!window.matchMedia('(hover: hover)').matches) return;
+      const b = (e.target as Element | null)?.closest?.('[data-notes-open]') || null;
+      if (b === forEl.current) return;
+      hide();
+      if (!b) return;
+      forEl.current = b;
+      timer.current = setTimeout(() => {
+        if (forEl.current !== b || !b.isConnected) return;
+        anchor.current = b.getBoundingClientRect();
+        setTip({ k: b.getAttribute('data-notes-open') || '', x: 0, y: 0, show: false });
+      }, 180);
+    };
+    document.addEventListener('mouseover', over);
+    document.addEventListener('mousedown', hide, true);
+    window.addEventListener('scroll', hide, true);
+    document.addEventListener('keydown', hide, true);
+    return () => {
+      clearTimeout(timer.current);
+      document.removeEventListener('mouseover', over);
+      document.removeEventListener('mousedown', hide, true);
+      window.removeEventListener('scroll', hide, true);
+      document.removeEventListener('keydown', hide, true);
+    };
+  }, []);
+  /* Position über dem Element (oder darunter, wenn oben kein Platz ist) */
+  useLayoutEffect(() => {
+    if (!tip || tip.show || !ref.current || !anchor.current) return;
+    const r = anchor.current,
+      w = ref.current.offsetWidth,
+      h = ref.current.offsetHeight;
+    const x = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+    let y = r.top - h - 8;
+    if (y < 8) y = r.bottom + 8;
+    setTip({ ...tip, x, y, show: true });
+  }, [tip]);
+  if (!tip) return null;
+  const i = tip.k.lastIndexOf('|');
+  const emp = tip.k.slice(0, i),
+    date = tip.k.slice(i + 1);
+  const list = data.entries.filter((a) => a.kind === 'Notiz' && a.employee === emp && a.date === date);
+  if (!list.length) return null;
+  return createPortal(
+    <div ref={ref} className={`note-tip${tip.show ? ' show' : ''}`} role="tooltip" style={{ left: tip.x, top: tip.y }}>
+      <div className="note-tip-head">
+        <Icon name="chat" />
+        <b>{list.length > 1 ? list.length + ' Notizen' : 'Notiz'}</b>
+      </div>
+      {list.slice(0, 4).map((n) => (
+        <div key={n.id} className="note-tip-item">
+          <p>{n.note || ''}</p>
+          <small>
+            <Icon name="user" />
+            von {n.author || n.employee || emp}
+          </small>
+        </div>
+      ))}
+      {list.length > 4 && <small className="note-tip-more">+{list.length - 4} weitere – klicken zum Öffnen</small>}
+    </div>,
+    document.body,
   );
 }

@@ -15,7 +15,14 @@
 .pp-panel-inline .pp-list{max-height:min(320px,45vh);overflow-y:auto}
 .dlg-team-dd .team-dd-panel{width:auto;right:0}
 .wp-form{overflow:visible}
-.duty-actions-menu.react-menu{position:absolute;right:0;top:calc(100% + 4px);z-index:60}
+/* „⋯“-Knopf eines Eintrags: aussehen wie bisher (<summary>), Menü hängt am <body> */
+.duty-actions>.duty-actions-sum{appearance:none;-webkit-appearance:none;border:0;padding:0;margin:0;background:transparent;box-shadow:none;width:22px;height:22px;min-height:0;border-radius:6px;display:grid;place-items:center;font:inherit;font-size:17px;font-weight:800;line-height:1;cursor:pointer;color:inherit;opacity:.8}
+.duty-actions>.duty-actions-sum:hover,.duty-actions.open>.duty-actions-sum{background:rgba(255,255,255,.25);opacity:1}
+.duty-actions>.duty-actions-sum:focus-visible{outline:2px solid currentColor;outline-offset:1px}
+.mobile-agenda-card .duty-actions>.duty-actions-sum{color:var(--muted)}
+.view-team .tm-cell .duty-actions.open{opacity:1}
+body>.duty-actions-menu{animation:dutyMenuIn .12s ease-out}
+@keyframes dutyMenuIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 .calendar-assignment[draggable="true"]{cursor:grab}
 .drop-target{outline:2px dashed var(--accent-color);outline-offset:-2px}
 .color-swatch.custom input[type=color]{opacity:0;position:absolute;inset:0;width:100%;height:100%;cursor:pointer;border:0;padding:0}

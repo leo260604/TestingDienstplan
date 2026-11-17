@@ -1,12 +1,13 @@
 'use client';
 /* Kalender: Dienstplan & Bereitschaft – Ansichten Tag, Woche, Monat, Team (Dienstplan) bzw. Zeitleiste (Bereitschaft) */
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '../AppProvider';
 import { useShell } from '../shell/AppShell';
-import { Avatar, DayPickerPop, Dot, Heading, Icon, InfoDialog, MonthPickerPop, TeamFilter, useClientDate, useOutside } from '../ui';
+import { Avatar, DayPickerPop, Dot, Heading, Icon, InfoDialog, MonthPickerPop, TeamFilter, useClientDate } from '../ui';
 import { AbsenceDialog, DutyDialog, DutyRotationDialog, StandbyRotationDialog, WorkplaceDialog, type DutyPreset } from './dialogs';
-import { NoteDialog, NotesPopup, TeamNoteDialog, TeamNotesPopup, noteKey } from './notes';
+import { NoteDialog, NoteTip, NotesPopup, TeamNoteDialog, TeamNotesPopup, noteKey } from './notes';
 import { addDays, day, durationHours, isoDate, isoWeek, weekStart } from '@/lib/dates';
 import { holidayName, isHoliday } from '@/lib/holidays';
 import { assignmentColor, buildWpIndex, computeConflicts, isVariableStandby, shiftHexColor, tRange, weekHoursOf } from '@/lib/entries';
@@ -270,7 +271,7 @@ export function Calendar({ area }: { area: Area }) {
     if (!isDuty || noteHost[k] !== a) return null;
     const cnt = notesBy[k].length;
     return (
-      <button type="button" className="note-chip" aria-label={`${cnt > 1 ? cnt + ' Notizen' : 'Notiz'} anzeigen`} title={notesBy[k].map((x) => x.note).join('\n')} onClick={(e) => { e.stopPropagation(); setDlg({ t: 'notes', k }); }}>
+      <button type="button" className="note-chip" data-notes-open={k} aria-label={`${cnt > 1 ? cnt + ' Notizen' : 'Notiz'} anzeigen`} onClick={(e) => { e.stopPropagation(); setDlg({ t: 'notes', k }); }}>
         <Icon name="chat" />
         {cnt > 1 && <span>{cnt}</span>}
       </button>
@@ -320,14 +321,13 @@ export function Calendar({ area }: { area: Area }) {
   };
 
   const noteStub = (g: NoteGroup, agenda?: boolean) => (
-    <button key={g.id} type="button" className={`calendar-assignment note-assignment note-stub${agenda ? ' note-agenda' : ''}`} title={`Notizen von ${g.employee} anzeigen`} onClick={() => setDlg({ t: 'notes', k: g.employee + '|' + g.date })}>
-      <span className="note-stub-ic">
+    <button key={g.id} type="button" className={`calendar-assignment note-assignment note-stub${agenda ? ' note-agenda' : ''}`} data-notes-open={g.employee + '|' + g.date} aria-label={`Notizen von ${g.employee} anzeigen`} onClick={() => setDlg({ t: 'notes', k: g.employee + '|' + g.date })}>
+      <span className="note-indicator">
         <Icon name="chat" />
+        Notizen{g.notes.length > 1 ? ` (${g.notes.length})` : ''}
       </span>
       <b>{g.employee}</b>
-      <span className="ca-shift">
-        {g.notes.length > 1 ? `${g.notes.length} Notizen` : 'Notiz'}
-      </span>
+      <small>{g.team}</small>
     </button>
   );
 
@@ -838,6 +838,7 @@ export function Calendar({ area }: { area: Area }) {
       {dlg?.t === 'workplace' && <WorkplaceDialog preset={dlg.preset} onClose={() => setDlg(null)} />}
       {dlg?.t === 'rotStandby' && <StandbyRotationDialog current={cur} preTeams={calTeams} onClose={() => setDlg(null)} />}
       {dlg?.t === 'rotDuty' && <DutyRotationDialog current={cur} preTeams={calTeams} onClose={() => setDlg(null)} />}
+      {isDuty && <NoteTip />}
       {dlg?.t === 'notes' && <NotesPopup k={dlg.k} onClose={() => setDlg(null)} onEdit={(nn) => setDlg({ t: 'note', note: nn })} onAdd={(emp, date) => setDlg({ t: 'note', date, forWho: emp })} />}
       {dlg?.t === 'note' && <NoteDialog note={dlg.note} date={dlg.date} forWho={dlg.forWho} onClose={() => setDlg(null)} />}
       {dlg?.t === 'teamNotes' && <TeamNotesPopup date={dlg.date} shown={tnShown} onClose={() => setDlg(null)} onEdit={(nn) => setDlg({ t: 'teamNote', note: nn })} onAdd={() => setDlg({ t: 'teamNote', date: dlg.date })} />}
@@ -903,30 +904,64 @@ interface MenuItem {
 function EntryMenu({ items }: { items: MenuItem[] }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  useOutside(open, ref, () => setOpen(false));
+  const btn = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  /* Menü hängt (wie bisher) direkt am <body>, damit es nicht von Kalenderzellen abgeschnitten wird */
+  useLayoutEffect(() => {
+    if (!open || !btn.current || !menu.current) return;
+    const r = btn.current.getBoundingClientRect(),
+      m = menu.current,
+      h = m.offsetHeight,
+      w = m.offsetWidth;
+    m.style.top = Math.max(8, Math.min(window.innerHeight - h - 8, r.bottom + 4)) + 'px';
+    m.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w)) + 'px';
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    const down = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (ref.current?.contains(t) || menu.current?.contains(t)) return;
+      close();
+    };
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    document.addEventListener('pointerdown', down, true);
+    document.addEventListener('keydown', key);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('pointerdown', down, true);
+      document.removeEventListener('keydown', key);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [open]);
   return (
     <div className={`duty-actions ${open ? 'open' : ''}`} ref={ref} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-      <button type="button" className="duty-actions-sum" aria-label="Dienstaktionen" title="Dienstaktionen" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button ref={btn} type="button" className="duty-actions-sum" aria-label="Dienstaktionen" title="Dienstaktionen" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         ⋯
       </button>
-      {open && (
-        <div className="duty-actions-menu react-menu">
-          {items.map((it) => (
-            <button
-              key={it.label}
-              type="button"
-              className={it.danger ? 'danger-text' : ''}
-              onClick={() => {
-                setOpen(false);
-                it.run();
-              }}
-            >
-              {it.icon && <Icon name={it.icon} />}
-              {it.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div ref={menu} className="duty-actions-menu" role="menu" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+            {items.map((it) => (
+              <button
+                key={it.label}
+                type="button"
+                role="menuitem"
+                className={it.danger ? 'danger-text' : ''}
+                onClick={() => {
+                  setOpen(false);
+                  it.run();
+                }}
+              >
+                {it.icon && <Icon name={it.icon} />}
+                {it.label}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
