@@ -1,6 +1,6 @@
 'use client';
 /* Dashboard – Baukasten aus Kacheln (Widgets). Neue Ansicht: in WIDGETS ergänzen. */
-import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '../AppProvider';
 import { useShell } from '../shell/AppShell';
@@ -28,6 +28,126 @@ const DEFAULT_LAYOUT: Record<'emp' | 'lead', [string, number][]> = {
 };
 const dashCols = (w: number) => (w >= 720 ? 12 : w >= 440 ? 6 : 2);
 const dashW = (size: Size, cols: number) => (size === 'full' ? cols : size === 'half' ? (cols >= 12 ? 6 : cols) : cols >= 12 ? 3 : cols >= 6 ? 2 : 1);
+const DASH_ROW = 8;
+type Pos = Record<string, { x: number; k: number }>;
+interface GridItem {
+  n: HTMLElement;
+  id: string;
+  size: Size;
+  w: number;
+  x: number;
+  k: number;
+  y: number;
+  h: number;
+}
+
+/* Reihenfolge → Positionen: bei 12 Spalten mit den Standardspalten, sonst von links nach rechts aufgefüllt */
+function dashFlow(seq: [string, number | null][], cols: number, sizeOf: (id: string) => Size): Pos {
+  const out: Pos = {};
+  let cur = 0;
+  seq.forEach(([id, x], k) => {
+    const w = dashW(sizeOf(id), cols);
+    let xx: number;
+    if (cols === 12 && x != null && x + w <= 12) xx = x;
+    else {
+      if (cur + w > cols) cur = 0;
+      xx = cur;
+      cur = (cur + w) % cols;
+    }
+    out[id] = { x: xx, k };
+  });
+  return out;
+}
+
+/* Ansichten in ihre Spalten fallen lassen */
+function dashPack(items: GridItem[], cols: number) {
+  items.sort((a, b) => a.k - b.k || a.x - b.x);
+  const placed: GridItem[] = [];
+  items.forEach((it) => {
+    it.x = Math.max(0, Math.min(cols - it.w, Math.round(it.x)));
+    let y = 0;
+    placed.forEach((p) => {
+      if (p.x < it.x + it.w && it.x < p.x + p.w) y = Math.max(y, p.y + p.h);
+    });
+    it.y = y;
+    placed.push(it);
+  });
+}
+
+/* Raster: jede Ansicht hat eine Spalte (x) und fällt nach oben, bis sie auf eine andere trifft */
+function dashLayoutGrid(root: HTMLElement, pos: Pos, animate = false) {
+  const cols = dashCols(root.clientWidth);
+  root.style.setProperty('--cols', String(cols));
+  const els = [...root.querySelectorAll<HTMLElement>('.dash-w')];
+  const gap = parseFloat(getComputedStyle(root).columnGap) || 16;
+  const before = animate ? new Map(els.map((n) => [n, n.getBoundingClientRect()])) : null;
+  const keepY = window.scrollY;
+  root.style.minHeight = root.offsetHeight + 'px'; // Seite darf beim Messen nicht kürzer werden
+  root.classList.remove('dash-sized');
+  els.forEach((n) => {
+    n.style.gridColumn = `span ${dashW(n.dataset.size as Size, cols)}`;
+    n.style.gridRow = 'auto';
+  });
+  const items: GridItem[] = els.map((n) => {
+    const p = pos[n.dataset.widget!] || { x: 0, k: 1e6 };
+    const size = n.dataset.size as Size;
+    return { n, id: n.dataset.widget!, size, w: dashW(size, cols), x: p.x, k: p.k, y: 0, h: Math.max(1, Math.ceil(((n.firstElementChild as HTMLElement)?.offsetHeight + gap) / DASH_ROW)) };
+  });
+  dashPack(items, cols);
+  // Alle kleinen Kacheln gleich hoch machen, dann noch einmal fallen lassen
+  const tiles = items.filter((i) => i.size === 'tile');
+  if (tiles.length) {
+    const h = Math.max(...tiles.map((i) => i.h));
+    tiles.forEach((i) => (i.h = h));
+  }
+  items.forEach((i) => (i.k = i.y + i.x / 100));
+  dashPack(items, cols);
+  items.forEach((i) => {
+    i.n.style.gridColumn = `${i.x + 1} / span ${i.w}`;
+    i.n.style.gridRow = `${i.y + 1} / span ${i.h}`;
+  });
+  root.classList.add('dash-sized');
+  root.style.minHeight = '';
+  if (Math.abs(window.scrollY - keepY) > 1) window.scrollTo(window.scrollX, keepY);
+  if (before)
+    items.forEach((i) => {
+      const a = before.get(i.n)!;
+      const b = i.n.getBoundingClientRect();
+      const dx = a.left - b.left;
+      const dy = a.top - b.top;
+      if (!dx && !dy) return;
+      i.n.style.transition = 'none';
+      i.n.style.transform = `translate(${dx}px,${dy}px)`;
+      void i.n.getBoundingClientRect();
+      i.n.style.transition = 'transform .2s ease';
+      i.n.style.transform = '';
+      setTimeout(() => (i.n.style.transition = ''), 220);
+    });
+  return { cols, items, gap };
+}
+
+/* Aktuelle Lage als Positionen (k = tatsächliche Zeile) */
+const posFromItems = (items: GridItem[], keep: Pos): Pos => {
+  const p: Pos = {};
+  items.forEach((i) => (p[i.id] = { x: i.x, k: i.y + i.x / 100 }));
+  Object.keys(keep).forEach((id) => {
+    if (!p[id]) p[id] = keep[id];
+  });
+  return p;
+};
+
+const GRIP = (
+  <span className="dash-handle" aria-hidden="true">
+    <svg viewBox="0 0 24 24">
+      <circle cx="9" cy="6" r="1.6" />
+      <circle cx="15" cy="6" r="1.6" />
+      <circle cx="9" cy="12" r="1.6" />
+      <circle cx="15" cy="12" r="1.6" />
+      <circle cx="9" cy="18" r="1.6" />
+      <circle cx="15" cy="18" r="1.6" />
+    </svg>
+  </span>
+);
 
 export function Dashboard() {
   const { ctx, data, user, prefs, setPrefs, f, toast, teamColor, setCal, run } = useApp();
@@ -526,72 +646,83 @@ export function Dashboard() {
   const visible = available.filter((w) => !hidden.includes(w.id));
   const colored = !visible.some((w) => w.id === 'today');
 
-  /* Raster: jede Ansicht hat eine Spalte (x) und fällt nach oben, bis sie auf eine andere trifft */
+  /* Gespeicherte Positionen je Spaltenanzahl (12 = großer Bildschirm, gilt sonst auch für Tablet/Handy) */
+  const ids = available.map((w) => w.id);
+  const sizeOf = (id: string): Size => WIDGETS.find((w) => w.id === id)?.size || 'tile';
+  const defaultPositions = (cols: number): Pos => {
+    const def: [string, number | null][] = DEFAULT_LAYOUT[layoutKey].filter(([id]) => ids.includes(id));
+    ids.forEach((id) => {
+      if (!def.some(([d]) => d === id)) def.push([id, 0]);
+    });
+    return dashFlow(def, cols, sizeOf);
+  };
+  const positions = (cols: number): Pos => {
+    const okPos = (o: unknown): Pos | null => {
+      if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+      const r: Pos = {};
+      Object.entries(o as Pos).forEach(([id, p]) => {
+        if (ids.includes(id) && p && Number.isFinite(p.x) && Number.isFinite(p.k)) r[id] = { x: p.x, k: p.k };
+      });
+      return Object.keys(r).length ? r : null;
+    };
+    const sp = saved?.pos && typeof saved.pos === 'object' ? saved.pos : {};
+    const own = okPos(sp[String(cols)]);
+    const big = okPos(sp['12']);
+    let pos: Pos;
+    if (own) pos = own;
+    else if (big)
+      pos = dashFlow(
+        Object.entries(big)
+          .sort((a, b) => a[1].k - b[1].k || a[1].x - b[1].x)
+          .map(([id]) => [id, null]),
+        cols,
+        sizeOf,
+      );
+    else return defaultPositions(cols);
+    // neu hinzugekommene Ansicht: hinter ihren Standard-Vorgänger, sonst unten anhängen
+    const def = DEFAULT_LAYOUT[layoutKey];
+    let extra = 1;
+    const max = Math.max(0, ...Object.values(pos).map((p) => p.k || 0));
+    ids.forEach((id) => {
+      if (pos[id]) return;
+      const i = def.findIndex(([d]) => d === id);
+      const prev = i > 0 ? def.slice(0, i).reverse().find(([d]) => pos[d]) : null;
+      if (prev) {
+        const dx = def[i][1];
+        pos[id] = { x: cols === 12 ? dx : Math.min(cols - dashW(sizeOf(id), cols), Math.round((dx * cols) / 12)), k: pos[prev[0]].k + 0.5 };
+      } else pos[id] = { x: 0, k: max + extra++ };
+    });
+    return pos;
+  };
+  const storeLayout = (next: { hidden?: string[]; cols?: number; pos?: Pos }) => {
+    const prevPos = saved?.pos && typeof saved.pos === 'object' && !Array.isArray(saved.pos) ? { ...saved.pos } : {};
+    let pos = prevPos;
+    if (next.pos && next.cols) {
+      pos = next.cols === 12 ? {} : prevPos; // Änderungen am großen Bildschirm gelten auch für Tablet/Handy
+      pos[String(next.cols)] = next.pos;
+    }
+    setPrefs({ dashLayout: { ...prefs.dashLayout, [`${user.id}|${layoutKey}`]: { hidden: next.hidden ?? hidden, known: ids, pos } } });
+  };
+
+  /* Bearbeitungsmodus: Kacheln frei verschieben */
+  const [editing, setEditing] = useState(false);
+  const draft = useRef<{ cols: number; pos: Pos } | null>(null);
+  const dragging = useRef(false);
   const root = useRef<HTMLDivElement>(null);
+  const currentPos = (el: HTMLElement): Pos => {
+    const cols = dashCols(el.clientWidth);
+    if (!editing) return positions(cols);
+    if (!draft.current || draft.current.cols !== cols) draft.current = { cols, pos: positions(cols) };
+    return draft.current.pos;
+  };
   useLayoutEffect(() => {
     const el = root.current;
     if (!el) return;
     const layout = () => {
-      const cols = dashCols(el.clientWidth);
-      el.style.setProperty('--cols', String(cols));
-      el.style.minHeight = el.offsetHeight + 'px'; // Seite darf beim Messen nicht kürzer werden
-      el.classList.remove('dash-sized');
-      const def = DEFAULT_LAYOUT[layoutKey];
-      const order = available.map((w) => w.id);
-      const pos: Record<string, { x: number; k: number }> = {};
-      let cur = 0;
-      const seq = [...def.filter(([id]) => order.includes(id)), ...order.filter((id) => !def.some(([d]) => d === id)).map((id) => [id, 0] as [string, number])];
-      seq.forEach(([id, x], k) => {
-        const size = WIDGETS.find((w) => w.id === id)?.size || 'tile';
-        const w = dashW(size, cols);
-        let xx: number;
-        if (cols === 12 && x + w <= 12) xx = x;
-        else {
-          if (cur + w > cols) cur = 0;
-          xx = cur;
-          cur = (cur + w) % cols;
-        }
-        pos[id] = { x: xx, k };
-      });
-      const els = [...el.querySelectorAll<HTMLElement>('.dash-w')];
-      els.forEach((n) => {
-        n.style.gridColumn = `span ${dashW(n.dataset.size as Size, cols)}`;
-        n.style.gridRow = 'auto';
-      });
-      const items = els.map((n) => {
-        const p = pos[n.dataset.widget!] || { x: 0, k: 1e6 };
-        return { n, size: n.dataset.size as Size, w: dashW(n.dataset.size as Size, cols), x: p.x, k: p.k, y: 0, h: Math.max(1, Math.ceil(((n.firstElementChild as HTMLElement)?.offsetHeight + 16) / 8)) };
-      });
-      const pack = () => {
-        items.sort((a, b) => a.k - b.k || a.x - b.x);
-        const placed: typeof items = [];
-        items.forEach((it) => {
-          it.x = Math.max(0, Math.min(cols - it.w, Math.round(it.x)));
-          let y = 0;
-          placed.forEach((p) => {
-            if (p.x < it.x + it.w && it.x < p.x + p.w) y = Math.max(y, p.y + p.h);
-          });
-          it.y = y;
-          placed.push(it);
-        });
-      };
-      pack();
-      const tiles = items.filter((i) => i.size === 'tile');
-      if (tiles.length) {
-        const h = Math.max(...tiles.map((i) => i.h));
-        tiles.forEach((i) => (i.h = h));
-      }
-      items.forEach((i) => (i.k = i.y + i.x / 100));
-      pack();
-      items.forEach((i) => {
-        i.n.style.gridColumn = `${i.x + 1} / span ${i.w}`;
-        i.n.style.gridRow = `${i.y + 1} / span ${i.h}`;
-      });
-      el.classList.add('dash-sized');
-      el.style.minHeight = '';
+      if (!dragging.current) dashLayoutGrid(el, currentPos(el));
     };
     layout();
-    const t = setTimeout(layout, 150);
+    const t = setTimeout(layout, 150); // Schriften/Bilder können Höhen noch ändern
     window.addEventListener('resize', layout);
     return () => {
       clearTimeout(t);
@@ -599,12 +730,152 @@ export function Dashboard() {
     };
   });
 
+  const startEdit = () => {
+    draft.current = null;
+    setEditing(true);
+  };
+  const endEdit = (save: boolean) => {
+    if (save && draft.current) {
+      storeLayout({ cols: draft.current.cols, pos: draft.current.pos });
+      toast('Ansicht gespeichert.');
+    }
+    draft.current = null;
+    setEditing(false);
+  };
+  const resetDraft = () => {
+    const el = root.current;
+    if (!el) return;
+    const cols = dashCols(el.clientWidth);
+    draft.current = { cols, pos: defaultPositions(cols) };
+    dashLayoutGrid(el, draft.current.pos, true);
+  };
+
+  /* Ziehen: Maus sofort, Touch nach kurzem Halten oder direkt am Griff */
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!editing || e.button !== 0 || dragging.current) return;
+    const el = e.currentTarget;
+    const onHandle = !!(e.target as HTMLElement).closest('.dash-handle');
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const mouse = e.pointerType === 'mouse';
+    if (mouse || onHandle) e.preventDefault();
+    let started = false;
+    const cleanup = () => {
+      clearTimeout(timer);
+      el.classList.remove('dash-press');
+      window.removeEventListener('pointermove', mv);
+      window.removeEventListener('pointerup', cleanup);
+      window.removeEventListener('pointercancel', cleanup);
+    };
+    const go = () => {
+      if (started) return;
+      started = true;
+      cleanup();
+      startDrag(el, sx, sy);
+    };
+    const mv = (ev: PointerEvent) => {
+      const d = Math.hypot(ev.clientX - sx, ev.clientY - sy);
+      if (mouse || onHandle) {
+        if (d > 4) go();
+      } else if (d > 8) cleanup(); // Touch: bewegen ohne Halten = scrollen
+    };
+    const timer = mouse || onHandle ? 0 : window.setTimeout(go, 320);
+    if (!mouse && !onHandle) el.classList.add('dash-press');
+    window.addEventListener('pointermove', mv);
+    window.addEventListener('pointerup', cleanup);
+    window.addEventListener('pointercancel', cleanup);
+    if (onHandle && !mouse) go();
+  };
+  const startDrag = (el: HTMLElement, x: number, y: number) => {
+    const rootEl = root.current;
+    if (!rootEl || !draft.current) return;
+    dragging.current = true;
+    const lay = dashLayoutGrid(rootEl, draft.current.pos);
+    const { cols, gap } = lay;
+    const rr = rootEl.getBoundingClientRect();
+    const er = el.getBoundingClientRect();
+    const step = (rr.width - gap * (cols - 1)) / cols + gap;
+    const base = posFromItems(lay.items, draft.current.pos);
+    const me = lay.items.find((i) => i.n === el)!;
+    const grabCol = Math.max(0, Math.min(me.w - 1, Math.floor((x - er.left) / step)));
+    const grabDy = y - er.top;
+    const ghost = el.cloneNode(true) as HTMLElement;
+    ghost.classList.add('dash-ghost');
+    ghost.removeAttribute('data-widget');
+    Object.assign(ghost.style, { width: er.width + 'px', height: er.height - gap + 'px', left: er.left + 'px', top: er.top + 'px', gridColumn: '', gridRow: '' });
+    document.body.appendChild(ghost);
+    el.classList.add('dash-placeholder');
+    document.body.classList.add('dash-drag-active');
+    try {
+      navigator.vibrate?.(12);
+    } catch {
+      /* Vibration nicht verfügbar */
+    }
+    let last = '';
+    let cur = base;
+    let py = y;
+    let raf = 0;
+    const place = (px: number, pY: number) => {
+      const r = rootEl.getBoundingClientRect();
+      const xx = Math.max(0, Math.min(cols - me.w, Math.floor((px - r.left) / step) - grabCol));
+      const k = (pY - grabDy - r.top) / DASH_ROW - 0.5;
+      const key = xx + '|' + Object.entries(base).filter(([id, b]) => id !== me.id && b.k < k).length;
+      if (key === last) return; // nur neu ordnen, wenn sich die Lage wirklich ändert
+      last = key;
+      cur = { ...base, [me.id]: { x: xx, k } };
+      dashLayoutGrid(rootEl, cur, true);
+    };
+    const move = (ev: PointerEvent) => {
+      py = ev.clientY;
+      ghost.style.left = ev.clientX - (x - er.left) + 'px';
+      ghost.style.top = ev.clientY - grabDy + 'px';
+      place(ev.clientX, ev.clientY);
+    };
+    const scroll = () => {
+      const edge = 70;
+      if (py < edge) window.scrollBy(0, -14);
+      else if (py > window.innerHeight - edge) window.scrollBy(0, 14);
+      raf = requestAnimationFrame(scroll);
+    };
+    const stopTouch = (ev: TouchEvent) => ev.preventDefault();
+    const finish = (commit: boolean) => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('keydown', esc, true);
+      document.removeEventListener('touchmove', stopTouch);
+      ghost.remove();
+      el.classList.remove('dash-placeholder');
+      document.body.classList.remove('dash-drag-active');
+      dragging.current = false;
+      if (!draft.current) return;
+      const res = dashLayoutGrid(rootEl, commit ? cur : draft.current.pos, true);
+      if (commit) draft.current = { cols, pos: posFromItems(res.items, draft.current.pos) };
+    };
+    const up = () => finish(true);
+    const cancel = () => finish(false);
+    const esc = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') {
+        ev.stopPropagation();
+        finish(false);
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    window.addEventListener('keydown', esc, true);
+    document.addEventListener('touchmove', stopTouch, { passive: false });
+    raf = requestAnimationFrame(scroll);
+  };
+
   const first = user.name.split(' ')[0];
   return (
     <>
       <Heading
         title={lead ? `Guten Tag, ${first}` : `Hallo ${first}`}
         actions={
+          editing ? undefined : (
           <>
             {lead && manageableTeams(ctx, 'Dienstplan').length > 0 && (
               <button className="btn primary" onClick={() => router.push('/dienstplan')}>
@@ -616,9 +887,34 @@ export function Dashboard() {
               Dashboard anpassen
             </button>
           </>
+          )
         }
       />
-      <div className={`dash dash-grid ${colored ? 'dash-colored' : ''}`} id="dash" ref={root}>
+      {editing && (
+        <div className="dash-editbar">
+          <div>
+            <b>
+              <Icon name="edit" />
+              Ansicht bearbeiten
+            </b>
+            <small>Kacheln und Bereiche frei an eine andere Stelle ziehen. Am Handy: kurz gedrückt halten oder am Griff ziehen.</small>
+          </div>
+          <div className="btn-row">
+            <button type="button" className="btn ghost" onClick={resetDraft}>
+              <Icon name="refresh" />
+              Standard wiederherstellen
+            </button>
+            <button type="button" className="btn" onClick={() => endEdit(false)}>
+              Abbrechen
+            </button>
+            <button type="button" className="btn primary" onClick={() => endEdit(true)}>
+              <Icon name="check" />
+              Speichern
+            </button>
+          </div>
+        </div>
+      )}
+      <div className={`dash dash-grid ${colored ? 'dash-colored' : ''} ${editing ? 'dash-editing' : ''}`} id="dash" ref={root}>
         {visible.length ? (
           visible.map((w) => (
             <div
@@ -626,20 +922,22 @@ export function Dashboard() {
               className={`dash-w dash-${w.size}`}
               data-widget={w.id}
               data-size={w.size}
-              role={w.action ? 'button' : undefined}
-              tabIndex={w.action ? 0 : undefined}
+              role={w.action && !editing ? 'button' : undefined}
+              tabIndex={w.action && !editing ? 0 : undefined}
+              onPointerDown={onPointerDown}
               onClick={(e) => {
-                if (!w.action || (e.target as HTMLElement).closest('a,button,input,select')) return;
+                if (editing || !w.action || (e.target as HTMLElement).closest('a,button,input,select')) return;
                 w.action();
               }}
               onKeyDown={(e) => {
-                if (w.action && (e.key === 'Enter' || e.key === ' ')) {
+                if (!editing && w.action && (e.key === 'Enter' || e.key === ' ')) {
                   e.preventDefault();
                   w.action();
                 }
               }}
             >
               {w.render()}
+              {editing && GRIP}
             </div>
           ))
         ) : (
@@ -723,10 +1021,11 @@ export function Dashboard() {
           widgets={available}
           hidden={hidden}
           onClose={() => setPopup(null)}
-          onSave={(h) => {
-            setPrefs({ dashLayout: { ...prefs.dashLayout, [`${user.id}|${layoutKey}`]: { hidden: h, known: available.map((w) => w.id) } } });
-            toast('Dashboard gespeichert.');
+          onSave={(h, edit) => {
+            storeLayout({ hidden: h });
             setPopup(null);
+            if (edit) startEdit();
+            else toast('Dashboard gespeichert.');
           }}
           onReset={() => {
             const next = { ...prefs.dashLayout };
@@ -742,7 +1041,7 @@ export function Dashboard() {
   );
 }
 
-function CustomizeDialog({ widgets, hidden, onClose, onSave, onReset }: { widgets: { id: string; title: string; desc: string; size: Size; icon: string }[]; hidden: string[]; onClose: () => void; onSave: (h: string[]) => void; onReset: () => void }) {
+function CustomizeDialog({ widgets, hidden, onClose, onSave, onReset }: { widgets: { id: string; title: string; desc: string; size: Size; icon: string }[]; hidden: string[]; onClose: () => void; onSave: (h: string[], edit?: boolean) => void; onReset: () => void }) {
   const [h, setH] = useState(hidden);
   return (
     <Modal
@@ -756,6 +1055,10 @@ function CustomizeDialog({ widgets, hidden, onClose, onSave, onReset }: { widget
           onCancel={onClose}
           left={
             <span className="dcfg-tools">
+              <button type="button" className="btn ghost small" onClick={() => onSave(h, true)} title="Kacheln und Bereiche frei an eine andere Stelle ziehen">
+                <Icon name="edit" />
+                Ansicht bearbeiten
+              </button>
               <button type="button" className="btn ghost small" onClick={onReset}>
                 <Icon name="refresh" />
                 Standard
