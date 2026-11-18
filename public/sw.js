@@ -1,10 +1,15 @@
 /* DienstPlan Pro – Service Worker: Offline-Ansicht des eigenen Plans und Push-Benachrichtigungen */
-const VERSION = 'dp-v1';
+const VERSION = 'dp-v2';
 const OFFLINE_URL = '/offline.html';
 const PRECACHE = [OFFLINE_URL, '/icons/icon-192.png', '/icons/logo-mark.svg', '/icons/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(VERSION).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
+  event.waitUntil(
+    caches
+      .open(VERSION)
+      .then((c) => Promise.allSettled(PRECACHE.map((u) => c.add(u))))
+      .then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener('activate', (event) => {

@@ -2,6 +2,7 @@ import 'server-only';
 /* Web Push (RFC 8030/8291/8292) ohne Zusatzpaket: VAPID-Signatur (ES256) und aes128gcm-Verschlüsselung mit node:crypto.
    Schlüssel: VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY (base64url) aus der Umgebung – sonst einmalig erzeugt und in AppSetting „vapid“ gespeichert. */
 import crypto from 'node:crypto';
+import { headers } from 'next/headers';
 import { prisma } from './db';
 
 export interface PushMessage {
@@ -52,8 +53,23 @@ export function vapidKeys(): Promise<Vapid> {
   return cached;
 }
 
+/** Absender (sub) für VAPID: Apple lehnt Platzhalter wie „@localhost“ ab – daher die echte Adresse der App */
+async function vapidSubject(): Promise<string> {
+  if (process.env.VAPID_SUBJECT) return process.env.VAPID_SUBJECT;
+  const base = process.env.AUTH_URL || process.env.NEXTAUTH_URL;
+  if (base && /^https:\/\//.test(base)) return new URL(base).origin;
+  try {
+    const h = await headers();
+    const host = h.get('x-forwarded-host') || h.get('host');
+    if (host && !/^(localhost|127\.|10\.|192\.168\.)/.test(host)) return `https://${host.split(',')[0].trim()}`;
+  } catch {
+    /* außerhalb einer Anfrage */
+  }
+  return 'mailto:push@dienstplan-pro.app';
+}
+
 /** VAPID-Header (RFC 8292) für einen Push-Dienst */
-export function vapidAuth(endpoint: string, v: Vapid, subject = process.env.VAPID_SUBJECT || 'mailto:dienstplan@localhost'): string {
+export function vapidAuth(endpoint: string, v: Vapid, subject: string): string {
   const header = b64u(Buffer.from(JSON.stringify({ typ: 'JWT', alg: 'ES256' })));
   const payload = b64u(Buffer.from(JSON.stringify({ aud: new URL(endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: subject })));
   const sig = crypto.sign('sha256', Buffer.from(`${header}.${payload}`), { key: v.privateKey, dsaEncoding: 'ieee-p1363' });
@@ -80,14 +96,15 @@ export function encryptPayload(plain: Buffer, p256dh: string, auth: string): Buf
 }
 
 /** Push an alle Geräte der Empfänger senden. Abgelaufene Abos werden entfernt; Fehler brechen nie die Aktion ab. */
-export async function sendPush(messages: PushMessage[]): Promise<{ sent: number; failed: number }> {
-  const res = { sent: 0, failed: 0 };
+export async function sendPush(messages: PushMessage[]): Promise<{ sent: number; failed: number; errors: string[] }> {
+  const res = { sent: 0, failed: 0, errors: [] as string[] };
   if (!messages.length) return res;
   try {
     const ids = [...new Set(messages.map((m) => m.recipientId))];
     const subs = await prisma.pushSubscription.findMany({ where: { employeeId: { in: ids } } });
     if (!subs.length) return res;
     const v = await vapidKeys();
+    const subject = await vapidSubject();
     const gone: string[] = [];
     await Promise.all(
       messages.flatMap((m) =>
@@ -98,16 +115,23 @@ export async function sendPush(messages: PushMessage[]): Promise<{ sent: number;
               const body = encryptPayload(Buffer.from(JSON.stringify({ title: m.title, body: m.body, url: m.url || '/dashboard', tag: m.tag })), s.p256dh, s.auth);
               const r = await fetch(s.endpoint, {
                 method: 'POST',
-                headers: { Authorization: vapidAuth(s.endpoint, v), TTL: '86400', Urgency: 'normal', 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream' },
+                headers: { Authorization: vapidAuth(s.endpoint, v, subject), TTL: '86400', Urgency: 'normal', 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream' },
                 body: new Uint8Array(body),
                 signal: AbortSignal.timeout(10000),
               });
               if (r.status === 404 || r.status === 410) gone.push(s.id);
               if (r.ok) res.sent++;
-              else res.failed++;
+              else {
+                res.failed++;
+                const why = `${new URL(s.endpoint).host} antwortet ${r.status}${(await r.text().catch(() => '')).slice(0, 200).replace(/\s+/g, ' ').replace(/^(.)/, ': $1')}`;
+                res.errors.push(why);
+                console.error('Push abgelehnt –', why);
+              }
             } catch (e) {
               res.failed++;
-              console.error('Push fehlgeschlagen', e);
+              const why = `${new URL(s.endpoint).host} nicht erreichbar: ${e instanceof Error ? e.message : String(e)}`;
+              res.errors.push(why);
+              console.error('Push fehlgeschlagen –', why);
             }
           }),
       ),

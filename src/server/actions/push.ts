@@ -38,6 +38,7 @@ export async function sendTestPush(): Promise<ActionResult> {
     const n = await prisma.pushSubscription.count({ where: { employeeId: c.user.id } });
     if (!n) return fail('Auf keinem Gerät sind Push-Benachrichtigungen aktiviert.');
     const r = await sendPush([{ recipientId: c.user.id, title: 'DienstPlan · Test', body: 'Push-Benachrichtigungen funktionieren auf diesem Gerät.', url: '/einstellungen', tag: 'test' }]);
-    return r.sent ? ok(`Testnachricht an ${r.sent} ${r.sent === 1 ? 'Gerät' : 'Geräte'} gesendet.`) : fail('Die Testnachricht konnte nicht zugestellt werden. Bitte Push auf diesem Gerät aus- und wieder einschalten.');
+    if (r.sent) return ok(`Testnachricht an ${r.sent} ${r.sent === 1 ? 'Gerät' : 'Geräte'} gesendet.${r.failed ? ` ${r.failed} fehlgeschlagen (${r.errors[0]}).` : ''}`);
+    return fail(`Die Testnachricht konnte nicht zugestellt werden${r.errors[0] ? ' – ' + r.errors[0] : ''}. Bitte Push auf diesem Gerät aus- und wieder einschalten.`);
   });
 }

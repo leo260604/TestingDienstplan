@@ -324,6 +324,13 @@ function NotifySection() {
 
 /* ---------- App installieren, Offline-Ansicht und Push auf diesem Gerät ---------- */
 type PushState = 'loading' | 'unsupported' | 'ios-install' | 'denied' | 'off' | 'on' | 'busy';
+/** Service Worker sicher bereitstellen (registrieren, falls nötig) – mit Zeitlimit statt endlosem Warten */
+async function swReady(ms = 8000): Promise<ServiceWorkerRegistration> {
+  const reg = (await navigator.serviceWorker.getRegistration('/')) || (await navigator.serviceWorker.register('/sw.js', { scope: '/' }));
+  if (reg.active) return reg;
+  return Promise.race([navigator.serviceWorker.ready, new Promise<never>((_, no) => setTimeout(() => no(new Error('Der Service Worker startet nicht – bitte Seite neu laden.')), ms))]);
+}
+const errText = (e: unknown) => (e instanceof Error ? e.message : String(e || 'unbekannter Fehler'));
 const b64ToBytes = (s: string) => {
   const b = atob((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
   return Uint8Array.from(b, (ch) => ch.charCodeAt(0));
@@ -347,10 +354,10 @@ function AppSection() {
       return;
     }
     let alive = true;
-    navigator.serviceWorker.ready
+    swReady()
       .then((reg) => reg.pushManager.getSubscription())
       .then((sub) => alive && setPush(sub ? 'on' : 'off'))
-      .catch(() => alive && setPush('unsupported'));
+      .catch(() => alive && setPush('off'));
     return () => {
       alive = false;
     };
@@ -367,19 +374,28 @@ function AppSection() {
       }
       const k = await run(getPushKey(), { silent: true });
       if (!k.ok || !k.data) return setPush('off');
-      const reg = await navigator.serviceWorker.ready;
-      const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(k.data.key) }));
+      const reg = await swReady();
+      const key = b64ToBytes(k.data.key);
+      let sub = await reg.pushManager.getSubscription();
+      // Altes Abo mit anderem Schlüssel verwerfen, sonst lehnt der Push-Dienst ab
+      const old = sub?.options?.applicationServerKey ? new Uint8Array(sub.options.applicationServerKey) : null;
+      if (sub && old && old.join() !== key.join()) {
+        await sub.unsubscribe();
+        sub = null;
+      }
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
       const res = await run(savePushSubscription(sub.toJSON() as never));
       setPush(res.ok ? 'on' : 'off');
-    } catch {
+      if (res.ok) void run(sendTestPush(), { silent: true });
+    } catch (e) {
       setPush('off');
-      toast('Push konnte auf diesem Gerät nicht aktiviert werden.');
+      toast(`Push konnte nicht aktiviert werden: ${errText(e)}`);
     }
   };
   const disable = async () => {
     setPush('busy');
     try {
-      const reg = await navigator.serviceWorker.ready;
+      const reg = await swReady();
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
         await run(removePushSubscription(sub.endpoint));
