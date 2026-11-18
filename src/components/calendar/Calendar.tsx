@@ -682,6 +682,32 @@ export function Calendar({ area }: { area: Area }) {
     if (canAdd) actions.push({ id: 'add', label: 'Bereitschaft einteilen', icon: 'plus', desc: 'Neue Bereitschaft einteilen', primary: true, run: () => setDlg({ t: 'duty', preset: { date: isoDate(new Date()) } }) });
   }
   const secondary = actions.filter((a) => !a.primary).length;
+  /* „Aktionen“: am PC Dropdown unter dem Button (ohne Hauptaktion), am Handy Bottom-Sheet */
+  const actToggle = useRef<HTMLButtonElement>(null);
+  const [actPop, setActPop] = useState<{ top: number; right: number } | null>(null);
+  const openActions = () => {
+    const desk = !window.matchMedia('(max-width: 700px)').matches;
+    const r = actToggle.current?.getBoundingClientRect();
+    setActPop(desk && r ? { top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) } : null);
+    setDlg({ t: 'actions' });
+  };
+  const actionsOpen = dlg?.t === 'actions';
+  useEffect(() => {
+    if (!actionsOpen) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setDlg(null);
+      }
+    };
+    const close = () => actPop && setDlg(null);
+    document.addEventListener('keydown', key, true);
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('keydown', key, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [actionsOpen, actPop]);
 
   const step = (dir: 1 | -1) => {
     const d = new Date(cur);
@@ -869,7 +895,14 @@ export function Calendar({ area }: { area: Area }) {
                   </button>
                 ))}
               </span>
-              <button type="button" className={`btn dp-actions-toggle${secondary ? '' : ' no-secondary'}`} aria-haspopup="menu" onClick={() => setDlg({ t: 'actions' })}>
+              <button
+                ref={actToggle}
+                type="button"
+                className={`btn dp-actions-toggle${secondary ? '' : ' no-secondary'}`}
+                aria-haspopup="menu"
+                aria-expanded={actionsOpen}
+                onClick={() => (actionsOpen ? setDlg(null) : openActions())}
+              >
                 <Icon name="grid" className="dp-act-ic" />
                 <span>Aktionen</span>
                 <Icon name="down" className="dp-act-caret" />
@@ -1013,8 +1046,8 @@ export function Calendar({ area }: { area: Area }) {
         </InfoDialog>
       )}
       {dlg?.t === 'actions' && (
-        <div className="modal-backdrop app-dialog dp-sheet-layer show" onClick={(e) => e.target === e.currentTarget && setDlg(null)}>
-          <div className="dp-sheet" role="dialog" aria-modal="true">
+        <div className={`modal-backdrop app-dialog dp-sheet-layer show${actPop ? ' dp-pop' : ''}`} onClick={(e) => e.target === e.currentTarget && setDlg(null)}>
+          <div className="dp-sheet" role={actPop ? 'menu' : 'dialog'} aria-modal={actPop ? undefined : true} style={actPop ? { top: actPop.top, right: actPop.right } : undefined}>
             <div className="dp-sheet-grip" aria-hidden="true" />
             <div className="dp-sheet-head">
               <b>Aktionen</b>
@@ -1023,10 +1056,11 @@ export function Calendar({ area }: { area: Area }) {
               </button>
             </div>
             <div className="dp-sheet-list">
-              {actions.map((a) => (
+              {actions.filter((a) => !actPop || !a.primary).map((a) => (
                 <button
                   key={a.id}
                   type="button"
+                  role={actPop ? 'menuitem' : undefined}
                   className={`dp-sheet-item ${a.primary ? 'primary' : ''}`}
                   onClick={() => {
                     setDlg(null);
@@ -1034,7 +1068,7 @@ export function Calendar({ area }: { area: Area }) {
                   }}
                 >
                   <span className="dp-sheet-ic">
-                    <Icon name={a.icon} />
+                    <Icon name={a.icon} className={a.icon === 'travel' ? 'ic-fill' : ''} />
                   </span>
                   <span className="dp-sheet-txt">
                     <b>{a.label}</b>
