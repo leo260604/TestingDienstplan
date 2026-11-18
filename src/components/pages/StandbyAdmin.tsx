@@ -114,11 +114,6 @@ export function StandbyAdmin() {
                       <span>24</span>
                     </div>
                   </th>
-                  {admin && (
-                    <th className="sb-col-actions">
-                      <span className="sr-only">Aktionen</span>
-                    </th>
-                  )}
                 </tr>
               </thead>
               <tbody>
@@ -128,7 +123,14 @@ export function StandbyAdmin() {
                   /* Bereitschaften haben keine eigene Farbe – sie übernehmen die Teamfarbe (mehrere Teams: neutral) */
                   const fill = list.length === 1 ? teamColor(list[0]) : '#159da8';
                   return (
-                    <tr key={t.id}>
+                    <tr
+                      key={t.id}
+                      className={admin ? 'sb-row-edit' : ''}
+                      tabIndex={admin ? 0 : undefined}
+                      title={admin ? `${t.name} bearbeiten` : undefined}
+                      onClick={admin ? () => setEdit(t) : undefined}
+                      onKeyDown={admin ? (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setEdit(t)) : undefined}
+                    >
                       <td className="sb-col-name">
                         <span className="shift-color-tag" style={{ '--shift-color': fill } as CSSProperties} title={t.name}>
                           <i />
@@ -170,16 +172,6 @@ export function StandbyAdmin() {
                             ))}
                         </div>
                       </td>
-                      {admin && (
-                        <td className="nowrap row-actions sb-col-actions">
-                          <button className="icon-btn" type="button" title="Bearbeiten" aria-label={`${t.name} bearbeiten`} onClick={() => setEdit(t)}>
-                            <Icon name="edit" />
-                          </button>
-                          <button className="icon-btn danger" type="button" title="Löschen" aria-label={`${t.name} löschen`} onClick={async () => (await ask(`Bereitschaftszeit „${t.name}“ löschen? Bestehende Bereitschaftseinträge bleiben erhalten.`, 'Löschen')) && run(deleteStandbyTime(t.id))}>
-                            <Icon name="trash" />
-                          </button>
-                        </td>
-                      )}
                     </tr>
                   );
                 })}
@@ -196,7 +188,7 @@ export function StandbyAdmin() {
 }
 
 function StandbyTimeEditor({ value, onClose }: { value: StandbyTime | null; onClose: () => void }) {
-  const { data, run, teamColor } = useApp();
+  const { data, run, ask, teamColor } = useApp();
   const [name, setName] = useState(value?.name || '');
   const [type, setType] = useState<'fix' | 'variabel'>(value && isVariableStandby(value) ? 'variabel' : 'fix');
   const [start, setStart] = useState(value?.start || '');
@@ -245,7 +237,29 @@ function StandbyTimeEditor({ value, onClose }: { value: StandbyTime | null; onCl
         const r = await run(saveStandbyTime({ id: value?.id, name, type, start, end, color: keepColor, days, hol, teamIds }));
         if (r.ok) onClose();
       }}
-      footer={<ModalActions onCancel={onClose} okLabel={value ? 'Speichern' : 'Bereitschaftszeit anlegen'} disabled={!!problem} />}
+      footer={
+        <ModalActions
+          onCancel={onClose}
+          okLabel={value ? 'Speichern' : 'Bereitschaftszeit anlegen'}
+          disabled={!!problem}
+          left={
+            value ? (
+              <button
+                type="button"
+                className="btn ghost danger-text"
+                onClick={async () => {
+                  if (!(await ask(`Bereitschaftszeit „${value.name}“ löschen? Bestehende Bereitschaftseinträge bleiben erhalten.`, 'Löschen'))) return;
+                  const r = await run(deleteStandbyTime(value.id));
+                  if (r.ok) onClose();
+                }}
+              >
+                <Icon name="trash" />
+                Löschen
+              </button>
+            ) : undefined
+          }
+        />
+      }
     >
       <div className="sbt-grid">
         <div className="sbt-col">

@@ -77,3 +77,8 @@ a.nav-item{color:inherit}
   .sb-times-table .sb-team-names{max-width:60vw;white-space:normal;text-align:right}
   .sb-times-table td.sb-col-actions{width:auto;justify-content:flex-end;gap:6px;padding-top:6px!important}
 }
+
+/* Bereitschaft verwalten: ganze Zeile anklicken = bearbeiten */
+.sb-times-table tr.sb-row-edit{cursor:pointer}
+.sb-times-table tr.sb-row-edit:hover td{background:color-mix(in srgb,var(--accent-color) 6%,transparent)}
+.sb-times-table tr.sb-row-edit:focus-visible{outline:2px solid var(--accent-color);outline-offset:-2px}
