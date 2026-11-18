@@ -1,6 +1,6 @@
 'use client';
 /* Rollen & Berechtigungen, Audit Log, Export Audit, Hilfe */
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useApp } from '../AppProvider';
 import { useShell } from '../shell/AppShell';
 import { Avatar, FilterDropdown, Heading, Icon } from '../ui';
@@ -205,6 +205,23 @@ export function Roles() {
 function ExportLogButton({ audit }: { audit: boolean }) {
   const { data, user, f, toast, refresh } = useApp();
   const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLSpanElement>(null);
+  /* Klick außerhalb oder Esc schließt das Menü */
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', key);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', key);
+    };
+  }, [open]);
   const list = audit ? data.auditLog : data.exportLog;
   const go = (fmt: 'PDF' | 'XLSX' | 'CSV') => {
     setOpen(false);
@@ -232,8 +249,8 @@ function ExportLogButton({ audit }: { audit: boolean }) {
     toast(`Protokoll als ${fmt === 'XLSX' ? 'Excel' : fmt} exportiert.`);
   };
   return (
-    <span className="export-log-wrap" style={{ position: 'relative' }}>
-      <button className="btn primary" onClick={() => setOpen((o) => !o)}>
+    <span className="export-log-wrap" style={{ position: 'relative' }} ref={wrap}>
+      <button className="btn primary" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <Icon name="download" />
         {audit ? 'Log exportieren' : 'Protokoll exportieren'}
       </button>
