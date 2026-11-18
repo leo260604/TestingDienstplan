@@ -42,7 +42,3 @@ a.nav-item{color:inherit}
 .shift-color-presets .color-swatch{margin:0;flex:none;align-self:center;vertical-align:middle}
 .shift-color-presets label.color-swatch.custom{display:block;padding:0;gap:0;line-height:0;font-size:0;box-sizing:border-box}
 
-/* Bereitschaft verwalten: Bereitschaft für mehrere Teams – Bezeichnung und Punkt im Farbverlauf der Teamfarben */
-.shift-color-tag.sb-multi{background:color-mix(in srgb,var(--ink) 6%,var(--surface))}
-.shift-color-tag.sb-multi i{background:var(--sb-fill)}
-.shift-color-tag.sb-multi .sb-name{background:var(--sb-fill);-webkit-background-clip:text;background-clip:text;color:transparent}

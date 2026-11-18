@@ -123,17 +123,14 @@ export function StandbyAdmin() {
                 {sorted.map((t) => {
                   const vari = isVariableStandby(t);
                   const list = standbyTimeTeams(t, data.teams);
-                  /* Bereitschaften haben keine eigene Farbe – sie übernehmen die Teamfarbe.
-                     Mehrere Teams: Farbverlauf über alle zugewiesenen Teamfarben */
-                  const cols = [...new Set(list.map((x) => teamColor(x)))];
-                  const c = cols[0] || '#159da8';
-                  const fill = cols.length > 1 ? `linear-gradient(90deg,${cols.join(',')})` : c;
+                  /* Bereitschaften haben keine eigene Farbe – sie übernehmen die Teamfarbe (mehrere Teams: neutral) */
+                  const fill = list.length === 1 ? teamColor(list[0]) : '#159da8';
                   return (
                     <tr key={t.id}>
                       <td>
-                        <span className={`shift-color-tag${cols.length > 1 ? ' sb-multi' : ''}`} style={{ '--shift-color': c, '--sb-fill': fill } as CSSProperties} title={list.map((x) => x.name).join(', ') || undefined}>
+                        <span className="shift-color-tag" style={{ '--shift-color': fill } as CSSProperties}>
                           <i />
-                          <span className="sb-name">{t.name}</span>
+                          {t.name}
                         </span>
                       </td>
                       <td>{vari ? <span className="pill sb-type var">Variabel</span> : <span className="pill sb-type fix">Fix</span>}</td>
@@ -214,9 +211,8 @@ function StandbyTimeEditor({ value, onClose }: { value: StandbyTime | null; onCl
     return `${both.map((x) => x.name).join(', ')} ${both.length === 1 ? 'hat' : 'haben'}`;
   })();
   /* Keine eigene Farbe: Anzeige in der Teamfarbe (bei genau einem Team), gespeichert bleibt der bisherige Wert */
-  const selCols = [...new Set(teamIds.map((id) => teamColor(data.teams.find((t) => t.id === id))))];
-  const color = selCols[0] || '#159da8';
-  const fill = selCols.length > 1 ? `linear-gradient(90deg,${selCols.join(',')})` : color;
+  const color = teamIds.length === 1 ? teamColor(data.teams.find((t) => t.id === teamIds[0])) : '#159da8';
+  const fill = color;
   const keepColor = shiftHexColor(value?.color || '#159da8');
   const problem = !name.trim()
     ? 'Bitte eine Bezeichnung eingeben.'
