@@ -36,6 +36,9 @@ export interface Person {
   teamsPhone: string;
   photo: string;
   role: string;
+  /** Geburtstag ohne Jahr (MM-TT). Leer, wenn nicht eingetragen oder für die angemeldete Person nicht sichtbar
+      (sichtbar nur für die Person selbst und Mitglieder derselben Teams). */
+  birthday?: string;
 }
 
 export type SelfMode = 'none' | 'all' | 'selected';

@@ -33,6 +33,8 @@ model Employee {
   phone        String?
   /// Telefonnummer für Microsoft Teams
   teamsPhone   String?
+  /// Geburtstag ohne Jahr im Format MM-TT (z. B. 03-27); sichtbar nur für Personen im selben Team
+  birthday     String?
   /// Profilbild als data:-URL (max. 160×160 px)
   photo        String?  @db.Text
   roleName     String   @default("Mitarbeiter")

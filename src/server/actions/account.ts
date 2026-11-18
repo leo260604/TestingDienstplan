@@ -106,3 +106,22 @@ export async function exportAllowed(report: string, format: string, range: strin
   await prisma.exportLog.create({ data: { userName: user.name, role: user.role, report, format, rows: 0, status: 'Verweigert', range } });
   return false;
 }
+
+/** Eigenen Geburtstag (Tag + Monat, ohne Jahr) speichern oder entfernen. Sichtbar nur für die eigenen Teams. */
+export async function saveMyBirthday(inp: { day: number; month: number } | null): Promise<ActionResult> {
+  return withCtx(async (c) => {
+    const me = c.data.staff.find((p) => p.id === c.user.id);
+    if (!me) return fail('Nicht angemeldet.');
+    let value: string | null = null;
+    if (inp) {
+      const d = Math.trunc(Number(inp.day)),
+        m = Math.trunc(Number(inp.month));
+      const maxDay = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
+      if (!maxDay || d < 1 || d > maxDay) return fail('Bitte einen gültigen Tag und Monat auswählen.');
+      value = `${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    }
+    await prisma.employee.update({ where: { id: me.id }, data: { birthday: value } });
+    await audit(c, value ? 'Geändert' : 'Gelöscht', 'Kontakte', me.name, { title: value ? 'Geburtstag eingetragen' : 'Geburtstag entfernt', object: me.name });
+    return ok(value ? 'Geburtstag gespeichert – sichtbar für deine Teams.' : 'Geburtstag entfernt.');
+  });
+}

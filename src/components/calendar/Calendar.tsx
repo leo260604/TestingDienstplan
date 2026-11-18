@@ -419,6 +419,22 @@ export function Calendar({ area }: { area: Area }) {
     );
   };
 
+  /* Geburtstage im Team (nur Dienstplan). Der Server liefert Geburtstage ohnehin nur für Mitglieder der eigenen Teams. */
+  const bdayPeople = (date: string) => {
+    if (!isDuty) return [];
+    const md = date.slice(5);
+    return data.staff.filter(
+      (p) => p.birthday === md && (member === 'Alle Mitarbeiter' || p.name === member) && data.teams.some((t) => t.memberIds.includes(p.id) && teamOk(t.name)),
+    );
+  };
+  const bdays = (date: string) =>
+    bdayPeople(date).map((p) => (
+      <div key={'bd' + p.id} className="bday-chip" title={`${p.name} hat heute Geburtstag`}>
+        <span aria-hidden="true">🎂</span>
+        <span>{p.name}</span>
+      </div>
+    ));
+
   const dayStack = (date: string) => {
     const entries = dayEntries(date);
     if ((view === 'Monat' || view === 'Woche') && prefs.expandedMonthView) return entries.map((a) => dayCard(a));
@@ -507,8 +523,9 @@ export function Calendar({ area }: { area: Area }) {
           ))}
           {dates.map((date) => (
             <div key={date} className={`week-day-cell ${date === today ? 'today' : ''}${holCls(date)}${dropCls(date)}${inRange(date) ? ' workplace-range-selected' : ''}`} data-calendar-day={date} {...dropProps(date)} {...rangeProps(date)}>
-              {dayEntries(date).length || ownNoteField(date) ? (
+              {dayEntries(date).length || ownNoteField(date) || bdayPeople(date).length ? (
                 <>
+                  {bdays(date)}
                   {dayStack(date)}
                   {ownNoteField(date)}
                 </>
@@ -534,6 +551,7 @@ export function Calendar({ area }: { area: Area }) {
           </div>
           {holTag(selected, 'hol-mobile')}
           {tnHead(selected, 'tn-mobile')}
+          {bdays(selected)}
           <div className="mobile-agenda-list">
             {dayEntries(selected).length ? dayEntries(selected).map((a) => agendaCard(a)) : <div className="mobile-agenda-empty">Keine Einträge für diesen Tag.</div>}
             {ownNoteField(selected, 'agenda-note-add')}
@@ -567,6 +585,7 @@ export function Calendar({ area }: { area: Area }) {
               <div className="date">{day(date).getDate()}</div>
               {holTag(date, 'hol-month')}
               {data.teamNotes.some((x) => x.date === date && tnShown.has(x.team)) && tnHead(date, 'tn-month')}
+              {bdays(date)}
               {dayStack(date)}
             </div>
           ))}
@@ -612,6 +631,7 @@ export function Calendar({ area }: { area: Area }) {
             </div>
             {holTag(selected, 'hol-mobile')}
             {tnHead(selected, 'tn-mobile')}
+            {bdays(selected)}
             <div className="mobile-agenda-list">{dayEntries(selected).length ? dayEntries(selected).map((a) => agendaCard(a)) : <div className="mobile-agenda-empty">Keine Einträge für diesen Tag.</div>}</div>
           </div>
         </div>
@@ -652,6 +672,7 @@ export function Calendar({ area }: { area: Area }) {
       <>
         {holTag(date, 'hol-day')}
         {tnHead(date, 'tn-day')}
+        {bdays(date)}
         <div className={`day-assignment-list${dropCls(date)}`} {...dropProps(date)}>
           {entries.length ? (
             entries.map((a) => (

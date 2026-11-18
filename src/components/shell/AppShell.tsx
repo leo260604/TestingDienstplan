@@ -11,7 +11,7 @@ import { PAGE_ROUTES, pageFromPath, roleLabel, visibleRole } from '@/lib/permiss
 import { currentUserTeamNames, pagesFor } from '@/lib/access';
 import { isoWeek } from '@/lib/dates';
 import { CHANGELOG, APP_VERSION } from '@/lib/changelog';
-import { deleteNotifications, markNotificationsRead, updateMyAccount } from '@/server/actions/account';
+import { deleteNotifications, markNotificationsRead, saveMyBirthday, updateMyAccount } from '@/server/actions/account';
 import { logout } from '@/server/actions/auth';
 import { tRange } from '@/lib/entries';
 import type { Page } from '@/lib/types';
@@ -350,7 +350,10 @@ function AccountMenu() {
           </div>
           <div className="acc-body">
             {tab === 'konto' ? (
-              <AccountForm email={me.email} phone={me.phone} teamsPhone={me.teamsPhone} onSave={(v) => run(updateMyAccount(v))} />
+              <>
+                <AccountForm email={me.email} phone={me.phone} teamsPhone={me.teamsPhone} onSave={(v) => run(updateMyAccount(v))} />
+                <BirthdayField value={me.birthday || ''} onSave={(v) => run(saveMyBirthday(v))} />
+              </>
             ) : (
               <>
                 {(
@@ -414,6 +417,62 @@ function AccountForm(props: { email: string; phone: string; teamsPhone: string; 
         Kontaktdaten speichern
       </button>
     </>
+  );
+}
+
+/* ---------------- Geburtstag (Tag + Monat, ohne Jahr) ---------------- */
+const BD_MONTHS = ['Jänner', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+const BD_MAX = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+function BirthdayField({ value, onSave }: { value: string; onSave: (v: { day: number; month: number } | null) => void }) {
+  const [m0, d0] = /^\d\d-\d\d$/.test(value) ? value.split('-').map(Number) : [0, 0];
+  const [month, setMonth] = useState(m0);
+  const [dayN, setDayN] = useState(d0);
+  const save = (d: number, m: number) => {
+    if (d && m) onSave({ day: d, month: m });
+    else if (!d && !m && value) onSave(null);
+  };
+  return (
+    <div className="field acc-birthday">
+      <span>Geburtstag</span>
+      <div className="acc-bd-row">
+        <select
+          aria-label="Tag"
+          value={dayN}
+          onChange={(e) => {
+            const d = Number(e.target.value);
+            setDayN(d);
+            save(d, d ? month : 0);
+            if (!d) setMonth(0);
+          }}
+        >
+          <option value={0}>Tag</option>
+          {Array.from({ length: month ? BD_MAX[month - 1] : 31 }, (_, i) => (
+            <option key={i + 1} value={i + 1}>
+              {i + 1}.
+            </option>
+          ))}
+        </select>
+        <select
+          aria-label="Monat"
+          value={month}
+          onChange={(e) => {
+            const m = Number(e.target.value);
+            const d = m && dayN > BD_MAX[m - 1] ? BD_MAX[m - 1] : dayN;
+            setMonth(m);
+            setDayN(m ? d : 0);
+            save(m ? d : 0, m);
+          }}
+        >
+          <option value={0}>Monat</option>
+          {BD_MONTHS.map((n, i) => (
+            <option key={n} value={i + 1}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </div>
+      <small className="muted">Ohne Jahr. Sichtbar nur für die Mitglieder deiner Teams – im Dienstplan an deinem Geburtstag.</small>
+    </div>
   );
 }
 

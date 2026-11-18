@@ -36,7 +36,12 @@ export async function loadAppData(user: CurrentUser): Promise<AppData> {
   ]);
   const setting = (k: string) => (settings.find((s) => s.key === k)?.value as Record<string, unknown>) || {};
   return {
-    staff: employees.map(toPerson),
+    /* Geburtstag nur an die Person selbst und an Mitglieder derselben Teams ausliefern */
+    staff: (() => {
+      const myTeams = new Set(teams.filter((t) => t.members.some((m) => m.employeeId === user.id)).map((t) => t.id));
+      const mates = new Set(teams.filter((t) => myTeams.has(t.id)).flatMap((t) => t.members.map((m) => m.employeeId)));
+      return employees.map((e) => ({ ...toPerson(e), birthday: e.id === user.id || mates.has(e.id) ? e.birthday || '' : '' }));
+    })(),
     teams: teams.map(toTeam),
     departments: departments.map((d) => ({ id: d.id, name: d.name, headId: d.headId || '', color: d.color, teamIds: d.teams.map((t) => t.id) })),
     roles,
