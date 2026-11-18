@@ -199,7 +199,7 @@ function ShiftEditor({ value, onClose, onDuplicate }: { value: Partial<ShiftType
                   <Icon name="trash" />
                   Löschen
                 </button>
-                <button type="button" className="btn ghost" onClick={() => onDuplicate(value)}>
+                <button type="button" className="btn" onClick={() => onDuplicate(value)}>
                   <Icon name="copy" />
                   Duplizieren
                 </button>
