@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useApp } from '../AppProvider';
-import { Avatar, Icon, Toggle, resizeImage, useClientDate, useOutside } from '../ui';
+import { Avatar, Icon, PickerPop, Toggle, resizeImage, useClientDate, useOutside } from '../ui';
 import { SwapCenter, SwapRequestDialog } from '../calendar/Swap';
 import { MobileTables, PageTopButton } from './PageExtras';
 import { PAGE_ROUTES, pageFromPath, roleLabel, visibleRole } from '@/lib/permissions';
@@ -351,8 +351,8 @@ function AccountMenu() {
           <div className="acc-body">
             {tab === 'konto' ? (
               <>
-                <AccountForm email={me.email} phone={me.phone} teamsPhone={me.teamsPhone} onSave={(v) => run(updateMyAccount(v))} />
                 <BirthdayField value={me.birthday || ''} onSave={(v) => run(saveMyBirthday(v))} />
+                <AccountForm email={me.email} phone={me.phone} teamsPhone={me.teamsPhone} onSave={(v) => run(updateMyAccount(v))} />
               </>
             ) : (
               <>
@@ -423,56 +423,93 @@ function AccountForm(props: { email: string; phone: string; teamsPhone: string; 
 /* ---------------- Geburtstag (Tag + Monat, ohne Jahr) ---------------- */
 const BD_MONTHS = ['Jänner', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 const BD_MAX = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const BD_SHORT = ['Jän', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
 function BirthdayField({ value, onSave }: { value: string; onSave: (v: { day: number; month: number } | null) => void }) {
   const [m0, d0] = /^\d\d-\d\d$/.test(value) ? value.split('-').map(Number) : [0, 0];
   const [month, setMonth] = useState(m0);
   const [dayN, setDayN] = useState(d0);
+  const [open, setOpen] = useState<'' | 'day' | 'month'>('');
+  const dayBtn = useRef<HTMLButtonElement>(null);
+  const monBtn = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setOpen(''), []);
   const save = (d: number, m: number) => {
     if (d && m) onSave({ day: d, month: m });
     else if (!d && !m && value) onSave(null);
   };
+  const maxDay = month ? BD_MAX[month - 1] : 31;
   return (
     <div className="field acc-birthday">
       <span>
         Geburtstag <span className="muted">(freiwillig)</span>
       </span>
       <div className="acc-bd-row">
-        <select
-          aria-label="Tag"
-          value={dayN}
-          onChange={(e) => {
-            const d = Number(e.target.value);
-            setDayN(d);
-            save(d, d ? month : 0);
-            if (!d) setMonth(0);
-          }}
-        >
-          <option value={0}>Tag</option>
-          {Array.from({ length: month ? BD_MAX[month - 1] : 31 }, (_, i) => (
-            <option key={i + 1} value={i + 1}>
-              {i + 1}.
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Monat"
-          value={month}
-          onChange={(e) => {
-            const m = Number(e.target.value);
-            const d = m && dayN > BD_MAX[m - 1] ? BD_MAX[m - 1] : dayN;
-            setMonth(m);
-            setDayN(m ? d : 0);
-            save(m ? d : 0, m);
-          }}
-        >
-          <option value={0}>Monat</option>
-          {BD_MONTHS.map((n, i) => (
-            <option key={n} value={i + 1}>
-              {n}
-            </option>
-          ))}
-        </select>
+        <button ref={dayBtn} type="button" className={`dpk-btn acc-bd-btn${open === 'day' ? ' open' : ''}`} aria-haspopup="dialog" aria-label="Tag auswählen" onClick={() => setOpen(open === 'day' ? '' : 'day')}>
+          <span className={dayN ? '' : 'ph'}>{dayN ? `${dayN}.` : 'Tag'}</span>
+        </button>
+        <button ref={monBtn} type="button" className={`dpk-btn acc-bd-btn${open === 'month' ? ' open' : ''}`} aria-haspopup="dialog" aria-label="Monat auswählen" onClick={() => setOpen(open === 'month' ? '' : 'month')}>
+          <span className={month ? '' : 'ph'}>{month ? BD_MONTHS[month - 1] : 'Monat'}</span>
+        </button>
+        {(dayN || month) > 0 && (
+          <button
+            type="button"
+            className="dpk-link muted acc-bd-clear"
+            onClick={() => {
+              setDayN(0);
+              setMonth(0);
+              save(0, 0);
+            }}
+          >
+            Entfernen
+          </button>
+        )}
       </div>
+      {open === 'day' && (
+        <PickerPop anchor={dayBtn.current} onClose={close} ariaLabel="Tag auswählen" title={<b>Tag</b>} className="acc-bd-pop">
+          <div className="acc-bd-days">
+            {Array.from({ length: maxDay }, (_, i) => i + 1).map((d) => (
+              <button
+                key={d}
+                type="button"
+                className={`dpk-day${d === dayN ? ' on' : ''}`}
+                aria-pressed={d === dayN}
+                onClick={() => {
+                  setDayN(d);
+                  close();
+                  save(d, month);
+                  if (!month) setTimeout(() => setOpen('month'), 0);
+                }}
+              >
+                <span>{d}</span>
+              </button>
+            ))}
+          </div>
+        </PickerPop>
+      )}
+      {open === 'month' && (
+        <PickerPop anchor={monBtn.current} onClose={close} ariaLabel="Monat auswählen" title={<b>Monat</b>} className="dpk-months">
+          <div className="dpk-mgrid">
+            {BD_MONTHS.map((n, i) => (
+              <button
+                key={n}
+                type="button"
+                className={`dpk-mon${i + 1 === month ? ' on' : ''}`}
+                aria-label={n}
+                onClick={() => {
+                  const m = i + 1;
+                  const d = dayN > BD_MAX[i] ? BD_MAX[i] : dayN;
+                  setMonth(m);
+                  setDayN(d);
+                  close();
+                  save(d, m);
+                  if (!d) setTimeout(() => setOpen('day'), 0);
+                }}
+              >
+                {BD_SHORT[i]}
+              </button>
+            ))}
+          </div>
+        </PickerPop>
+      )}
     </div>
   );
 }

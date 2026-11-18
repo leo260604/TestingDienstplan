@@ -5,7 +5,7 @@ import { useApp } from '../AppProvider';
 import { initials } from '@/lib/demo-data';
 import { ColorField, DateField } from './pickers';
 
-export { ColorField, DateField, DayPickerPop, MonthPickerPop } from './pickers';
+export { ColorField, DateField, DayPickerPop, MonthPickerPop, PickerPop } from './pickers';
 
 export function Icon({ name, className = '' }: { name: string; className?: string }) {
   return (
@@ -272,7 +272,10 @@ export function useOutside(open: boolean, ref: React.RefObject<HTMLElement | nul
   useEffect(() => {
     if (!open) return;
     const down = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) close();
+      const t = e.target as Element | null;
+      /* Klicks in Auswahl-Popups (Datum, Farbe, Geburtstag), die am <body> hängen, zählen nicht als „daneben“ */
+      if (t?.closest?.('.dpk-pop,.cp-layer')) return;
+      if (ref.current && !ref.current.contains(t as Node)) close();
     };
     const key = (e: KeyboardEvent) => e.key === 'Escape' && close();
     document.addEventListener('pointerdown', down);

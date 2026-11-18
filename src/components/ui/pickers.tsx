@@ -1,7 +1,7 @@
 'use client';
 /* Eigene Datumsauswahl (Tag, Woche, Monat) und eigener Farbwähler – wie in der bisherigen Browser-Version.
    Ersetzt die Browser-eigenen Auswahlfelder (<input type="date"> / <input type="color">). */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { addDays, day, isoDate, isoWeek, MONTHS_DE, WD_SHORT } from '@/lib/dates';
 import { holidayName } from '@/lib/holidays';
@@ -215,6 +215,27 @@ export function DayPickerPop({ anchor, value, onPick, onClose, week, min, max, a
           </button>
         )}
       </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** Allgemeines Auswahl-Popup im Stil der Datumsauswahl (z. B. Geburtstag: Tag bzw. Monat ohne Jahr) */
+export function PickerPop({ anchor, onClose, className = '', ariaLabel, title, children }: { anchor: HTMLElement | null; onClose: () => void; className?: string; ariaLabel: string; title: ReactNode; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const show = useShow();
+  usePlace(anchor, ref, []);
+  useDismiss(ref, anchor, onClose);
+  useEffect(() => {
+    const t = setTimeout(() => (ref.current?.querySelector<HTMLElement>('.on') || ref.current?.querySelector<HTMLElement>('button'))?.focus({ preventScroll: true }), 30);
+    return () => clearTimeout(t);
+  }, []);
+  return createPortal(
+    <div ref={ref} className={`dpk-pop ${className}${show ? ' show' : ''}`} role="dialog" aria-label={ariaLabel} onClick={(e) => e.stopPropagation()}>
+      <div className="dpk-head dpk-head-plain">
+        <div className="dpk-title">{title}</div>
+      </div>
+      {children}
     </div>,
     document.body,
   );
