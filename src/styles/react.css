@@ -113,3 +113,6 @@ tr.sb-row-edit:focus-visible{outline:2px solid var(--accent-color);outline-offse
 @media (min-width:901px){
   body.cal-fit .month-cell.has-bday .hol-badge.hol-month{left:auto;max-width:50%}
 }
+/* Geburtstag: „Entfernen“ in Rot */
+.acc-birthday .acc-bd-clear{color:var(--red)}
+.acc-birthday .acc-bd-clear:hover{background:color-mix(in srgb,var(--red) 12%,transparent);color:var(--red)}

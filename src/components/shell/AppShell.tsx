@@ -452,7 +452,7 @@ function BirthdayField({ value, onSave }: { value: string; onSave: (v: { day: nu
         {(dayN || month) > 0 && (
           <button
             type="button"
-            className="dpk-link muted acc-bd-clear"
+            className="dpk-link acc-bd-clear danger-text"
             onClick={() => {
               setDayN(0);
               setMonth(0);
