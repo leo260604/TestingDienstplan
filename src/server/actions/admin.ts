@@ -4,7 +4,7 @@ import { prisma } from '../db';
 import { audit, fail, ok, withCtx, type ActionResult } from '../context';
 import { adminCaps, adminTeams, autoLeaderFor, manageableTeams, standbyColorTeams, teamSettings } from '@/lib/access';
 import { distinctTeamColor } from '@/lib/colors';
-import { isHex, shiftHexColor, tRange } from '@/lib/entries';
+import { isHex, shiftHexColor, standbyTimeAllTeams, tRange } from '@/lib/entries';
 import { initials } from '@/lib/demo-data';
 import { BASE_PERMS, canEditArea, permsFor } from '@/lib/permissions';
 import { PERM_AREAS, type Ctx, type PermLevel, type RolePermissions, type TeamSettings } from '@/lib/types';
@@ -69,7 +69,14 @@ export async function saveStandbyTime(inp: { id?: string; name: string; type: 'f
     const days = [...new Set(inp.days.filter((d) => d >= 0 && d <= 6))].sort();
     const chosen = c.data.teams.filter((t) => inp.teamIds.includes(t.id));
     if (!days.length && !inp.hol) return fail('Bitte mindestens einen Wochentag oder Feiertage auswählen.');
-    if (!name || !chosen.length || c.data.standbyTimes.some((t) => t.id !== inp.id && t.name.toLowerCase() === name.toLowerCase())) return fail('Bitte alle Angaben prüfen.');
+    if (!name || !chosen.length) return fail('Bitte alle Angaben prüfen.');
+    /* Gleicher Name ist für verschiedene Teams erlaubt – nur innerhalb eines Teams muss er eindeutig sein */
+    const allNew = chosen.length === c.data.teams.length;
+    const clash = c.data.standbyTimes.find((t) => t.id !== inp.id && t.name.toLowerCase() === name.toLowerCase() && (allNew || standbyTimeAllTeams(t) || chosen.some((x) => (t.teamIds || []).includes(x.id))));
+    if (clash) {
+      const both = standbyTimeAllTeams(clash) || allNew ? chosen : chosen.filter((x) => (clash.teamIds || []).includes(x.id));
+      return fail(`${both.map((x) => x.name).join(', ')} ${both.length === 1 ? 'hat' : 'haben'} bereits eine Bereitschaft „${clash.name}“. Bitte einen anderen Namen wählen.`);
+    }
     if (!vr && (!T.test(inp.start) || !T.test(inp.end) || inp.start === inp.end)) return fail('Bitte Beginn und Ende angeben.');
     const allSel = chosen.length === c.data.teams.length;
     const data = {

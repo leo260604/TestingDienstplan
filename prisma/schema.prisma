@@ -129,7 +129,7 @@ enum StandbyType {
 
 model StandbyTime {
   id        String            @id @default(cuid())
-  name      String            @unique
+  name      String
   type      StandbyType       @default(FIX)
   start     String?
   end       String?

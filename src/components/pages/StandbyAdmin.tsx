@@ -34,7 +34,16 @@ export function StandbyAdmin() {
   const varCount = times.filter((t) => isVariableStandby(t)).length;
   const cover = standbyCoverage(times);
   const covered = data.teams.filter((t) => times.some((x) => standbyTimeForTeam(x, t.name, data.teams))).length;
-  const sorted = [...times].sort((a, b) => Number(isVariableStandby(a)) - Number(isVariableStandby(b)) || (a.start || '').localeCompare(b.start || '') || a.name.localeCompare(b.name, 'de'));
+  /* Teamweise sortiert, damit die Bereitschaften eines Teams immer zusammenstehen:
+     zuerst „Alle Teams“, dann die Teams in ihrer Reihenfolge; innerhalb eines Teams nach Beginn, variable zuletzt */
+  const teamRank = (t: StandbyTime) => {
+    if (standbyTimeAllTeams(t)) return -1;
+    const idx = data.teams.map((x, i) => ((t.teamIds || []).includes(x.id) ? i : 9999));
+    return Math.min(9999, ...idx);
+  };
+  const sorted = [...times].sort(
+    (a, b) => teamRank(a) - teamRank(b) || Number(isVariableStandby(a)) - Number(isVariableStandby(b)) || (a.start || '').localeCompare(b.start || '') || a.name.localeCompare(b.name, 'de'),
+  );
   return (
     <>
       <Heading
@@ -191,6 +200,16 @@ function StandbyTimeEditor({ value, onClose }: { value: StandbyTime | null; onCl
   const [hol, setHol] = useState(standbyHol(value || undefined));
   const [teamIds, setTeamIds] = useState<string[]>(value ? standbyTimeTeams(value, data.teams).map((t) => t.id) : []);
   const vr = type === 'variabel';
+  /* Gleicher Name ist für verschiedene Teams erlaubt – nur innerhalb eines Teams muss er eindeutig sein */
+  const nameClash = (() => {
+    const nm = name.trim().toLowerCase();
+    if (!nm || !teamIds.length) return '';
+    const all = teamIds.length === data.teams.length;
+    const other = data.standbyTimes.find((t) => t.id !== value?.id && t.name.toLowerCase() === nm && (all || standbyTimeAllTeams(t) || teamIds.some((id) => (t.teamIds || []).includes(id))));
+    if (!other) return '';
+    const both = data.teams.filter((x) => teamIds.includes(x.id) && (all || standbyTimeAllTeams(other) || (other.teamIds || []).includes(x.id)));
+    return `${both.map((x) => x.name).join(', ')} ${both.length === 1 ? 'hat' : 'haben'}`;
+  })();
   /* Keine eigene Farbe: Anzeige in der Teamfarbe (bei genau einem Team), gespeichert bleibt der bisherige Wert */
   const color = teamIds.length === 1 ? teamColor(data.teams.find((t) => t.id === teamIds[0])) : '#159da8';
   const keepColor = shiftHexColor(value?.color || '#159da8');
@@ -198,8 +217,8 @@ function StandbyTimeEditor({ value, onClose }: { value: StandbyTime | null; onCl
     ? 'Bitte eine Bezeichnung eingeben.'
     : !days.length && !hol
       ? 'Bitte mindestens einen Wochentag oder Feiertage auswählen.'
-      : data.standbyTimes.some((t) => t.id !== value?.id && t.name.toLowerCase() === name.trim().toLowerCase())
-        ? 'Es gibt bereits eine Bereitschaftszeit mit diesem Namen.'
+      : nameClash
+        ? `${nameClash} bereits eine Bereitschaft mit diesem Namen.`
         : !teamIds.length
           ? 'Bitte mindestens ein Team auswählen.'
           : !vr && (!start || !end)
