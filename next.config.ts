@@ -10,6 +10,14 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Service Worker immer frisch laden, damit Updates sofort greifen
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+          { key: 'Service-Worker-Allowed', value: '/' },
+        ],
+      },
+      {
         source: '/:path*',
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },

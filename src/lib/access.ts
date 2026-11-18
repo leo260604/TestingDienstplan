@@ -21,6 +21,10 @@ export function teamSettings(t?: Team | null): TeamSettings {
     selfDutyIds: ids(v.selfDutyIds),
     selfStandby: mode(v.selfStandby),
     selfStandbyIds: ids(v.selfStandbyIds),
+    minStaff: Array.from({ length: 7 }, (_, i) => {
+      const n = Array.isArray(v.minStaff) ? Number(v.minStaff[i]) : 0;
+      return Number.isFinite(n) ? Math.max(0, Math.min(99, Math.round(n))) : 0;
+    }),
   };
 }
 

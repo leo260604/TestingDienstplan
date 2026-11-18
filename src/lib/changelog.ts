@@ -9,6 +9,17 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    v: '2026.11.18.2',
+    date: '18.11.2026',
+    title: 'Mindestbesetzung, Wochenvorlagen, App & Push',
+    items: [
+      ['neu', 'Team', 'Mindestbesetzung', 'Pro Team und Wochentag festlegen – Dienstplan und Dashboard warnen bei Unterbesetzung.'],
+      ['neu', 'Dienstplan', 'Wochenvorlagen', 'Musterwoche speichern und mit einem Klick auf beliebige Wochen anwenden.'],
+      ['neu', 'Oberfläche', 'Als App installieren', 'DienstPlan lässt sich am Handy und PC installieren und zeigt deinen Plan auch offline.'],
+      ['neu', 'Benachrichtigungen', 'Push am Handy', 'Neue Einteilungen, Änderungen und Tauschanfragen als Mitteilung – auch wenn die App geschlossen ist.'],
+    ],
+  },
+  {
     v: '2026.11.18',
     date: '18.11.2026',
     title: 'Neue technische Basis: Server, Datenbank & Anmeldung',

@@ -4,7 +4,7 @@ import { normalizeExternalNotify } from '@/lib/notifications';
 import { prisma } from './db';
 import { dateToIso, toEntry, toPerson, toStandbyTime, toSwap, toTeam } from './mappers';
 import { canViewArea } from '@/lib/permissions';
-import { DEFAULT_PREFS, type AppData, type CurrentUser, type RolePermissions, type UserPrefs } from '@/lib/types';
+import { DEFAULT_PREFS, type WeekTemplate, type AppData, type CurrentUser, type RolePermissions, type UserPrefs } from '@/lib/types';
 
 export async function loadPermissions(): Promise<{ roles: string[]; permissions: Record<string, RolePermissions> }> {
   const roles = await prisma.role.findMany({ orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
@@ -67,7 +67,15 @@ export async function loadAppData(user: CurrentUser): Promise<AppData> {
     })),
     auditLog: auditLog.map((a) => ({ id: a.id, ts: a.ts.getTime(), user: a.userName, role: a.role, action: a.action, area: a.area, detail: a.detail, title: a.title, object: a.object, before: a.before, after: a.after })),
     exportLog: exportLog.map((x) => ({ id: x.id, ts: x.ts.getTime(), user: x.userName, role: x.role, report: x.report, format: x.format, rows: x.rows, status: x.status, range: x.range, size: x.size })),
-    settings: { features: setting('features'), cockpitLink: setting('cockpitLink'), integrations: setting('integrations') },
+    settings: {
+      features: setting('features'),
+      cockpitLink: setting('cockpitLink'),
+      integrations: setting('integrations'),
+      weekTemplates: (() => {
+        const v = settings.find((s) => s.key === 'weekTemplates')?.value;
+        return Array.isArray(v) ? (v as unknown as WeekTemplate[]) : [];
+      })(),
+    },
   };
 }
 

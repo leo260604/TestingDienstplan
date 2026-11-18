@@ -1,5 +1,6 @@
 'use client';
 /* Dashboard – Baukasten aus Kacheln (Widgets). Neue Ansicht: in WIDGETS ergänzen. */
+import { understaffed as understaffedTeams } from '@/lib/staffing';
 import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '../AppProvider';
@@ -190,6 +191,18 @@ export function Dashboard() {
       scope.forEach((t) => {
         const gaps = horizon.filter((date) => !data.entries.some((a) => a.date === date && a.team === t.name && a.kind === 'Bereitschaft'));
         if (gaps.length) issues.push({ level: 'crit', icon: 'moon', title: `${t.name}: ${gaps.length} ${gaps.length === 1 ? 'Tag' : 'Tage'} ohne Bereitschaft`, text: 'Erster offener Tag: ' + f.fmtIsoDate(gaps[0]), page: 'Bereitschaft', query: { view: 'Woche', date: gaps[0], team: t.name } });
+      });
+      understaffedTeams(data.entries, scope, data.staff, horizon).forEach((u, _i, all) => {
+        const mine = all.filter((x) => x.team.id === u.team.id);
+        if (mine[0] !== u) return; // je Team nur ein Punkt
+        issues.push({
+          level: 'crit',
+          icon: 'users',
+          title: `${u.team.name}: ${mine.length} ${mine.length === 1 ? 'Tag' : 'Tage'} unterbesetzt`,
+          text: `Erster Tag: ${f.fmtIsoDate(u.date)} · ${u.have} von mind. ${u.need} im Dienst`,
+          page: 'Dienstplan',
+          query: { view: 'Team', date: u.date, team: u.team.name },
+        });
       });
       const ids = computeConflicts(data.entries);
       const hits = data.entries.filter((a) => !a.isAbsence && ids.has(a.id) && horizon.includes(a.date) && scopeNames.has(a.team)).sort((a, b) => a.date.localeCompare(b.date));

@@ -7,6 +7,7 @@ import { useApp } from '../AppProvider';
 import { useShell } from '../shell/AppShell';
 import { Avatar, DayPickerPop, Dot, Heading, Icon, InfoDialog, MonthPickerPop, TeamFilter, useClientDate } from '../ui';
 import { AbsenceDialog, DutyDialog, DutyRotationDialog, StandbyRotationDialog, WorkplaceDialog, type DutyPreset } from './dialogs';
+import { WeekTemplatesDialog } from './templates';
 import { NoteDialog, NoteTip, NotesPopup, TeamNoteDialog, TeamNotesPopup, noteKey } from './notes';
 import { addDays, day, durationHours, isoDate, isoWeek, weekStart } from '@/lib/dates';
 import { holidayName, isHoliday } from '@/lib/holidays';
@@ -29,6 +30,7 @@ import {
   teamNoteTeams,
 } from '@/lib/access';
 import { canSwapDuty, swapOpenFor } from '@/lib/swaps';
+import { hasMinStaff, minStaffOn, staffedOn, understaffed } from '@/lib/staffing';
 import { deleteEntry, moveEntry } from '@/server/actions/entries';
 import type { Entry, TeamNote } from '@/lib/types';
 
@@ -49,6 +51,7 @@ type Dlg =
   | { t: 'day'; date: string }
   | { t: 'contact'; id: string }
   | { t: 'actions' }
+  | { t: 'templates' }
   | null;
 
 export function Calendar({ area }: { area: Area }) {
@@ -436,6 +439,33 @@ export function Calendar({ area }: { area: Area }) {
     ));
 
   /* Kompakte Geburtstags-Markierung neben der Tageszahl (Woche/Monat) – teilt sich die Zeile mit einem Feiertag */
+  /* Mindestbesetzung: Warnung bei Unterbesetzung (nur Dienstplan) */
+  const minTeams = isDuty ? data.teams.filter((t) => teamOk(t.name) && hasMinStaff(t)) : [];
+  const underOn = (date: string) => (minTeams.length ? understaffed(data.entries, minTeams, data.staff, [date]) : []);
+  const underText = (date: string) =>
+    underOn(date)
+      .map((x) => `${x.team.name}: ${x.have} von mind. ${x.need}`)
+      .join(' · ');
+  const underMark = (date: string, cls = '') => {
+    const u = underOn(date);
+    if (!u.length) return null;
+    const txt = `Unterbesetzt – ${underText(date)}`;
+    return (
+      <span className={`under-mark ${cls}`} title={txt} aria-label={txt}>
+        <Icon name="alert" />
+        <span className="under-mark-txt">{u.length === 1 ? `${u[0].have}/${u[0].need}` : `${u.length} Teams`}</span>
+      </span>
+    );
+  };
+  const underBanner = (date: string) =>
+    underOn(date).length ? (
+      <div className="under-banner">
+        <Icon name="alert" />
+        <span>
+          <b>Unterbesetzt:</b> {underText(date)}
+        </span>
+      </div>
+    ) : null;
   const bdayMark = (date: string, cls = '') => {
     const ppl = bdayPeople(date);
     if (!ppl.length) return null;
@@ -532,6 +562,7 @@ export function Calendar({ area }: { area: Area }) {
               {W[i]}
               <b>{day(date).getDate()}</b>
               {bdayMark(date, 'bday-week')}
+              {underMark(date, 'under-week')}
               {holTag(date)}
               {tnHead(date)}
             </div>
@@ -566,6 +597,7 @@ export function Calendar({ area }: { area: Area }) {
           {holTag(selected, 'hol-mobile')}
           {tnHead(selected, 'tn-mobile')}
           {bdays(selected)}
+          {underBanner(selected)}
           <div className="mobile-agenda-list">
             {dayEntries(selected).length ? dayEntries(selected).map((a) => agendaCard(a)) : <div className="mobile-agenda-empty">Keine Einträge für diesen Tag.</div>}
             {ownNoteField(selected, 'agenda-note-add')}
@@ -598,6 +630,7 @@ export function Calendar({ area }: { area: Area }) {
             <div key={date} className={`month-cell ${date === today ? 'today' : ''}${holCls(date)}${dropCls(date)}${inRange(date) ? ' workplace-range-selected' : ''}${bdayPeople(date).length ? ' has-bday' : ''}`} data-calendar-day={date} {...dropProps(date)} {...rangeProps(date)}>
               <div className="date">{day(date).getDate()}</div>
               {bdayMark(date, 'bday-month')}
+              {underMark(date, 'under-month')}
               {holTag(date, 'hol-month')}
               {data.teamNotes.some((x) => x.date === date && tnShown.has(x.team)) && tnHead(date, 'tn-month')}
               {dayStack(date)}
@@ -646,6 +679,7 @@ export function Calendar({ area }: { area: Area }) {
             {holTag(selected, 'hol-mobile')}
             {tnHead(selected, 'tn-mobile')}
             {bdays(selected)}
+            {underBanner(selected)}
             <div className="mobile-agenda-list">{dayEntries(selected).length ? dayEntries(selected).map((a) => agendaCard(a)) : <div className="mobile-agenda-empty">Keine Einträge für diesen Tag.</div>}</div>
           </div>
         </div>
@@ -710,10 +744,12 @@ export function Calendar({ area }: { area: Area }) {
     if (absenceTeams(ctx).length) actions.push({ id: 'add-absence', label: 'Abwesenheit', icon: 'travel', desc: 'Urlaub, Krankenstand & Co. eintragen', run: () => setDlg({ t: 'absence' }) });
     if (features.rotationDuty !== false && canManageAny && manageableTeams(ctx, 'Dienstplan').some((t) => data.shiftTypes.some((s) => s.team === t.name)))
       actions.push({ id: 'duty-rotation', label: 'Rotation automatisch planen', icon: 'spark', desc: 'Dienste im Wechsel automatisch verteilen', run: () => setDlg({ t: 'rotDuty' }) });
+    if (canManageAny) actions.push({ id: 'week-templates', label: 'Wochenvorlagen', icon: 'copy', desc: 'Musterwoche speichern & auf andere Wochen anwenden', run: () => setDlg({ t: 'templates' }) });
     if (canAdd) actions.push({ id: 'add', label: 'Eintrag erstellen', icon: 'plus', desc: 'Neuen Dienst einteilen', primary: true, run: () => setDlg({ t: 'duty', preset: { date: isoDate(new Date()) } }) });
   } else {
     if (features.rotationStandby !== false && canManageAny && data.standbyTimes.length)
       actions.push({ id: 'auto-rotation', label: 'Rotation automatisch planen', icon: 'spark', desc: 'Bereitschaften im Wechsel automatisch verteilen', run: () => setDlg({ t: 'rotStandby' }) });
+    if (canManageAny) actions.push({ id: 'week-templates', label: 'Wochenvorlagen', icon: 'copy', desc: 'Musterwoche speichern & auf andere Wochen anwenden', run: () => setDlg({ t: 'templates' }) });
     if (canAdd) actions.push({ id: 'add', label: 'Bereitschaft einteilen', icon: 'plus', desc: 'Neue Bereitschaft einteilen', primary: true, run: () => setDlg({ t: 'duty', preset: { date: isoDate(new Date()) } }) });
   }
   const secondary = actions.filter((a) => !a.primary).length;
@@ -1063,6 +1099,7 @@ export function Calendar({ area }: { area: Area }) {
       {dlg?.t === 'workplace' && <WorkplaceDialog preset={dlg.preset} onClose={() => setDlg(null)} />}
       {dlg?.t === 'rotStandby' && <StandbyRotationDialog current={cur} preTeams={calTeams} onClose={() => setDlg(null)} />}
       {dlg?.t === 'rotDuty' && <DutyRotationDialog current={cur} preTeams={calTeams} onClose={() => setDlg(null)} />}
+      {dlg?.t === 'templates' && <WeekTemplatesDialog area={area} current={cur} preTeams={calTeams} onClose={() => setDlg(null)} />}
       {isDuty && <NoteTip />}
       {dlg?.t === 'notes' && <NotesPopup k={dlg.k} onClose={() => setDlg(null)} onEdit={(nn) => setDlg({ t: 'note', note: nn })} onAdd={(emp, date) => setDlg({ t: 'note', date, forWho: emp })} />}
       {dlg?.t === 'note' && <NoteDialog note={dlg.note} date={dlg.date} forWho={dlg.forWho} onClose={() => setDlg(null)} />}
@@ -1242,7 +1279,7 @@ function TeamMatrix(props: {
     if (!members.length) return;
     const color = teamColor(t),
       manage = canManageTeam(ctx, t.name) && canEdit(ctx, editArea);
-    if (shownTeams.length > 1)
+    if (shownTeams.length > 1 || (isDuty && hasMinStaff(t)))
       rows.push(
         <div className="tm-row tm-team" key={'t' + t.id}>
           <div className="tm-name">
@@ -1272,12 +1309,17 @@ function TeamMatrix(props: {
             }
             const c = all.filter((p) => data.entries.some((a) => a.date === date && a.employee === p.name && a.kind === 'Dienstplan' && !a.isAbsence)).length;
             const pct = all.length ? Math.round((c / all.length) * 100) : 0;
+            const need = minStaffOn(t, date);
+            const under = !!need && !isHoliday(date) && staffedOn(data.entries, t, data.staff, date) < need;
             return (
-              <div key={date} className={`tm-cov ${date === today ? 'today' : ''}`}>
-                <span className="cov-bar">
-                  <i style={{ width: `${pct}%` }} className={pct >= 80 ? 'ok' : pct >= 50 ? 'mid' : 'low'} />
-                </span>
+              <div key={date} className={`tm-cov ${date === today ? 'today' : ''}${under ? ' under' : ''}`} title={need ? `${under ? 'Unterbesetzt – ' : ''}${staffedOn(data.entries, t, data.staff, date)} im Dienst · Mindestbesetzung ${need}` : undefined}>
+                {under ? <Icon name="alert" /> : (
+                  <span className="cov-bar">
+                    <i style={{ width: `${pct}%` }} className={pct >= 80 ? 'ok' : pct >= 50 ? 'mid' : 'low'} />
+                  </span>
+                )}
                 {c}/{all.length}
+                {need ? <small className="tm-min">mind. {need}</small> : null}
               </div>
             );
           })}
@@ -1490,6 +1532,8 @@ function TeamMatrix(props: {
           const color = teamColor(t);
           const manage = canManageTeam(ctx, t.name) && canEdit(ctx, editArea);
           const c = isDuty ? all.filter((p) => data.entries.some((a) => a.date === selDay && a.employee === p.name && a.kind === 'Dienstplan' && !a.isAbsence)).length : 0;
+          const need = isDuty && !isHoliday(selDay) ? minStaffOn(t, selDay) : 0;
+          const under = !!need && staffedOn(data.entries, t, data.staff, selDay) < need;
           const selSb = !isDuty && sbOn(t.name, selDay);
           return (
             <div className="md-team" key={t.id}>
@@ -1499,8 +1543,10 @@ function TeamMatrix(props: {
                   <b>{t.name}</b>
                 </span>
                 {isDuty ? (
-                  <span className={`md-cov ${c / all.length >= 0.8 ? 'ok' : c / all.length >= 0.5 ? 'mid' : 'low'}`}>
+                  <span className={`md-cov ${under ? 'low' : c / all.length >= 0.8 ? 'ok' : c / all.length >= 0.5 ? 'mid' : 'low'}`} title={need ? `Mindestbesetzung ${need}` : undefined}>
+                    {under && <Icon name="alert" />}
                     {c}/{all.length}
+                    {need ? ` · mind. ${need}` : ''}
                   </span>
                 ) : selSb ? (
                   <span className="md-cov ok">{selSb.employee}</span>

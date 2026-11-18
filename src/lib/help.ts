@@ -43,6 +43,7 @@ export interface HelpSection {
 
 export const HELP_SECTIONS: HelpSection[] = [
  {id:'start',page:null,icon:'spark',title:'Erste Schritte',intro:'Grundlagen, die auf jeder Seite gelten.',items:[
+  {t:'Als App installieren, offline & Push',s:['Unter „Einstellungen“ → „App & Push“ installierst du DienstPlan als App (am iPhone: in Safari „Teilen“ → „Zum Home-Bildschirm“).','Ohne Internet zeigt die App deinen gespeicherten Plan der nächsten 90 Tage an.','Schalte dort „Push-Mitteilungen auf diesem Gerät“ ein, um neue Einteilungen, Änderungen und Tauschanfragen als Mitteilung am Handy zu bekommen.'],tip:'Push gilt je Gerät – auf jedem Handy bzw. Browser einmal einschalten.'},
   {t:'Im Menü navigieren',s:['Links im Menü findest du alle Bereiche, die deine Rolle nutzen darf – oben die Arbeitsbereiche, darunter „Verwaltung“.','Mit dem Pfeil am Menürand klappst du das Menü auf schmale Symbole zusammen.','Am Handy öffnest du das Menü über das Symbol ☰ oben links.'],tip:'Was du nicht siehst, ist für deine Rolle nicht freigegeben. Freigaben verwaltet die Administration unter „Team Berechtigungen“.'},
   {t:'Anmelden und abmelden',s:['Melde dich mit deinem Microsoft-Konto, mit E-Mail und Passwort oder (im Demo-Betrieb) über „Benutzer wählen“ an.','Die Rolle ist im Benutzerprofil hinterlegt – die Seite passt sich automatisch an.','Zum Abmelden oben rechts auf dein Profilbild klicken und „Abmelden“ wählen.']},
   {t:'Schnellsuche (Strg K)',s:['Drücke Strg K (am Mac ⌘ K).','Tippe einen Namen, ein Team, einen Dienst oder eine Seite – auch Anleitungen aus dieser Hilfe werden gefunden.','Mit ↑ ↓ wählen, mit Enter öffnen, mit Esc schließen.']},
@@ -57,6 +58,8 @@ export const HELP_SECTIONS: HelpSection[] = [
   {t:'Direkt einen Dienst einteilen',when:c=>c.plan,s:['Klicke oben auf „＋ Dienst einteilen“.','Es öffnet sich derselbe Dialog wie im Dienstplan (siehe „Dienst einteilen“).']}
  ]},
  {id:'dienstplan',page:'Dienstplan',icon:'cal',title:'Dienstplan',intro:'Dienste, Abwesenheiten und Arbeitsorte im Kalender.',items:[
+  {t:'Wochenvorlagen verwenden',when:c=>c.plan,s:['Plane eine Woche so, wie sie immer wieder aussehen soll.','Öffne „Aktionen“ → „Wochenvorlagen“, wähle das Team und klicke „Vorlage speichern“.','Um sie zu nutzen: Vorlage aufklappen, Zielwoche wählen und „anwenden“ klicken. Ohne „ersetzen“ werden nur freie Plätze gefüllt.'],tip:'Abwesende, Feiertage und Personen, die nicht mehr im Team sind, werden automatisch ausgelassen.'},
+  {t:'Unterbesetzung erkennen',when:c=>c.lead,s:['Ist für ein Team eine Mindestbesetzung festgelegt, zeigt der Kalender einen roten Hinweis (z. B. „2/3“) an Tagen mit zu wenig Personen im Dienst.','Die Teamansicht zeigt die Besetzung je Tag samt Mindestwert; das Dashboard listet unterbesetzte Tage unter „Offene Punkte“.']},
   {t:'Ansicht und Zeitraum wählen',s:['Oben wählst du die Ansicht: Tag, Woche, Monat oder Team.','Mit ‹ und › blätterst du, „Heute“ springt zurück zum aktuellen Datum.','Deine bevorzugte Startansicht legst du in den Einstellungen unter „Kalender“ fest.']},
   {t:'Nach Team oder Person filtern',s:['Öffne das Team-Auswahlfeld und hake ein oder mehrere Teams an – oder „Alle Teams“.','Über das Mitarbeiterfeld zeigst du nur eine Person an.','„Filter zurücksetzen“ stellt die Standardauswahl wieder her.']},
   {t:'Konflikte finden',s:['Einträge mit Überschneidungen (z. B. Dienst trotz Urlaub) sind markiert.','Klicke auf „Nur Konflikte“, um ausschließlich diese Einträge zu sehen.'],tip:c=>c.plan?'Korrigiere Konflikte direkt über das „⋯“-Menü des Eintrags oder per Verschieben.':''},
@@ -103,6 +106,7 @@ export const HELP_SECTIONS: HelpSection[] = [
   {t:'Nur bestimmte Einträge exportieren',when:c=>c.reports,s:['Hake in der Einträge-Tabelle die gewünschten Zeilen an.','Wähle im Export-Dialog „Ausgewählte Einträge“.']}
  ]},
  {id:'administration',page:'Administration',icon:'build',title:'Administration',intro:'Teams, Verantwortliche, Mitglieder und Teamregeln.',items:[
+  {t:'Mindestbesetzung festlegen',when:c=>c.lead,s:['Öffne das Team und wechsle zu „Teamregeln“.','Trage unter „Mindestbesetzung“ für jeden Wochentag ein, wie viele Personen mindestens Dienst haben sollen (0 = keine Vorgabe).','Speichern – ab sofort warnen Dienstplan und Dashboard bei Unterbesetzung.']},
   {t:'Teams finden',s:['Über das Suchfeld findest du Teams oder Personen.','„Vollständig“ und „Offen“ filtern nach Teams mit bzw. ohne Teamleitung.']},
   {t:'Team anlegen',when:c=>c.adminCaps.create,s:['Klicke auf „Team anlegen“.','Gib den Teamnamen ein, wähle eine Teamfarbe und optional eine Abteilung.','Klicke auf „Team anlegen“ – danach legst du Mitglieder, Teamleitung und Stellvertretung fest.']},
   {t:'Abteilung anlegen',when:c=>c.adminCaps.dept,s:['Klicke auf „Abteilung anlegen“.','Gib den Namen ein, wähle die Abteilungsleitung (Rolle „Abteilungsleiter“) und hake die Teams an.','Klicke auf „Anlegen“.']},

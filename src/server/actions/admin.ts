@@ -244,6 +244,7 @@ export async function saveTeam(inp: SaveTeamInput): Promise<ActionResult> {
     if (JSON.stringify(st) !== JSON.stringify(before)) {
       data.settings = st;
       changes.push(`Tausch ${st.swap ? 'an' : 'aus'} · Dienste selbst: ${st.selfDuty} · Bereitschaft selbst: ${st.selfStandby}`);
+      if (st.minStaff.join() !== before.minStaff.join()) changes.push(`Mindestbesetzung: ${st.minStaff.some((n) => n > 0) ? st.minStaff.map((n, i) => ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'][i] + ' ' + n).join(', ') : 'keine'}`);
     }
     if (!changes.length) return ok('Keine Änderungen.');
     await prisma.team.update({ where: { id: t.id }, data });
