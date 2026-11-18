@@ -473,7 +473,6 @@ function BirthdayField({ value, onSave }: { value: string; onSave: (v: { day: nu
           ))}
         </select>
       </div>
-      <small className="muted">Freiwillig, ohne Jahr. Damit deine Kollegen im Dienstplan sehen, wann du Geburtstag hast – sichtbar nur für die Mitglieder deiner Teams.</small>
     </div>
   );
 }
