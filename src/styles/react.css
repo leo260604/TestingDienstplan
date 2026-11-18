@@ -122,10 +122,10 @@ tr.sb-row-edit:focus-visible{outline:2px solid var(--accent-color);outline-offse
    Reine Symbol-Knöpfe ohne Text bleiben ohne Rahmen. */
 .link-btn,
 .dpk-link,
-.btn.ghost:not(:has(> svg:only-child)){border:1px solid color-mix(in srgb,currentColor 55%,transparent);border-radius:8px}
+.btn.ghost{border:1px solid color-mix(in srgb,currentColor 55%,transparent);border-radius:8px}
 .link-btn{padding:5px 10px;line-height:1.2}
 .acc-id .link-btn{padding:3px 8px}
-.link-btn:hover,.dpk-link:hover,.btn.ghost:not(:has(> svg:only-child)):hover{background:color-mix(in srgb,currentColor 10%,transparent);border-color:currentColor}
+.link-btn:hover,.dpk-link:hover,.btn.ghost:hover{background:color-mix(in srgb,currentColor 10%,transparent);border-color:currentColor}
 /* Rote Schrift = roter Rahmen (auch bei Knöpfen, die bisher grau umrandet waren) */
 .btn.danger,
 .btn.danger-text,
