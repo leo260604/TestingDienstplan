@@ -101,13 +101,11 @@ export function StandbyAdmin() {
             <table className="sb-times-table">
               <thead>
                 <tr>
-                  <th>Bezeichnung</th>
-                  <th>Art</th>
-                  <th>Zeit</th>
-                  <th>Dauer</th>
-                  <th>Wochentage</th>
-                  <th>Teams</th>
-                  <th className="hide-sm scale-head">
+                  <th className="sb-col-name">Bezeichnung</th>
+                  <th className="sb-col-time">Zeit</th>
+                  <th className="sb-col-days">Wochentage</th>
+                  <th className="sb-col-teams">Teams</th>
+                  <th className="hide-sm sb-col-scale scale-head">
                     <div className="scale-labels">
                       <span>00</span>
                       <span>06</span>
@@ -116,7 +114,11 @@ export function StandbyAdmin() {
                       <span>24</span>
                     </div>
                   </th>
-                  {admin && <th>Aktionen</th>}
+                  {admin && (
+                    <th className="sb-col-actions">
+                      <span className="sr-only">Aktionen</span>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -127,28 +129,31 @@ export function StandbyAdmin() {
                   const fill = list.length === 1 ? teamColor(list[0]) : '#159da8';
                   return (
                     <tr key={t.id}>
-                      <td>
-                        <span className="shift-color-tag" style={{ '--shift-color': fill } as CSSProperties}>
+                      <td className="sb-col-name">
+                        <span className="shift-color-tag" style={{ '--shift-color': fill } as CSSProperties} title={t.name}>
                           <i />
-                          {t.name}
+                          <span className="sb-name">{t.name}</span>
                         </span>
                       </td>
-                      <td>{vari ? <span className="pill sb-type var">Variabel</span> : <span className="pill sb-type fix">Fix</span>}</td>
-                      <td>
+                      <td className="sb-col-time">
                         {vari ? (
-                          <span className="muted">Ohne feste Uhrzeit</span>
+                          <span className="sb-time">
+                            <span className="pill sb-type var">Variabel</span>
+                            <small className="muted">ohne feste Uhrzeit</small>
+                          </span>
                         ) : (
-                          <>
-                            {t.start} – {t.end}
-                            {hoursOf(t.end) <= hoursOf(t.start) && <> <span className="pill">über Mitternacht</span></>}
-                          </>
+                          <span className="sb-time">
+                            <b>
+                              {t.start} – {t.end}
+                            </b>
+                            <small className="muted">{fmtHours(durationHours(t.start, t.end))}</small>
+                          </span>
                         )}
                       </td>
-                      <td>{vari ? <span className="muted">—</span> : fmtHours(durationHours(t.start, t.end))}</td>
-                      <td>
+                      <td className="sb-col-days">
                         <span className={`pill sb-days ${standbyRestricted(t) ? 'part' : ''}`}>{standbyDaysLabel(t)}</span>
                       </td>
-                      <td>
+                      <td className="sb-col-teams">
                         {standbyTimeAllTeams(t) ? (
                           <span className="pill sb-all-teams">Alle Teams</span>
                         ) : !list.length ? (
@@ -157,7 +162,7 @@ export function StandbyAdmin() {
                           <span className="sb-team-names">{list.map((x) => x.name).join(', ')}</span>
                         )}
                       </td>
-                      <td className="hide-sm">
+                      <td className="hide-sm sb-col-scale">
                         <div className={`mini-scale${vari ? ' is-variable' : ''}`}>
                           {!vari &&
                             scaleSegments(t.start, t.end).map(([a, b]) => (
@@ -166,7 +171,7 @@ export function StandbyAdmin() {
                         </div>
                       </td>
                       {admin && (
-                        <td className="nowrap row-actions">
+                        <td className="nowrap row-actions sb-col-actions">
                           <button className="icon-btn" type="button" title="Bearbeiten" aria-label={`${t.name} bearbeiten`} onClick={() => setEdit(t)}>
                             <Icon name="edit" />
                           </button>

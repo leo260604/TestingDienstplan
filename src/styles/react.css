@@ -42,3 +42,38 @@ a.nav-item{color:inherit}
 .shift-color-presets .color-swatch{margin:0;flex:none;align-self:center;vertical-align:middle}
 .shift-color-presets label.color-swatch.custom{display:block;padding:0;gap:0;line-height:0;font-size:0;box-sizing:border-box}
 
+
+/* ===== Bereitschaft verwalten: Tabelle für kleinere Bildschirme (z. B. MacBook) und Handy ===== */
+.sb-times-table{width:100%;table-layout:auto}
+.sb-times-table td,.sb-times-table th{vertical-align:middle}
+.sb-times-table .sb-col-name .shift-color-tag{max-width:100%;min-width:0}
+.sb-times-table .sb-col-name .sb-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-times-table .sb-time{display:flex;flex-direction:column;gap:1px;white-space:nowrap}
+.sb-times-table .sb-time b{font-weight:650;font-variant-numeric:tabular-nums}
+.sb-times-table .sb-time small{font-size:11.5px}
+.sb-times-table .sb-col-days .pill,.sb-times-table .sb-col-teams .pill{white-space:nowrap}
+.sb-times-table .sb-team-names{display:inline-block;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+.sb-times-table .sb-col-scale{width:28%;min-width:160px}
+.sb-times-table .sb-col-scale .mini-scale,.sb-times-table .scale-head .scale-labels{min-width:0;width:100%}
+.sb-times-table .sb-col-actions{width:1%;text-align:right}
+.sb-times-table .sb-col-actions .icon-btn{margin-left:2px}
+/* Laptop (z. B. MacBook 13–14"): kompakter, Zeitleiste schmaler */
+@media (max-width:1440px) and (min-width:701px){
+  .sb-times-table th,.sb-times-table td{padding-left:10px;padding-right:10px}
+  .sb-times-table .sb-col-scale{width:22%;min-width:120px}
+  .sb-times-table .sb-team-names{max-width:160px}
+}
+/* Tablet / kleines Fenster: Zeitleiste ausblenden, Rest bleibt in einer Zeile */
+@media (max-width:1100px) and (min-width:701px){
+  .sb-times-table .sb-col-scale{display:none}
+  .sb-times-table .sb-team-names{max-width:140px}
+  .sb-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .sb-stats .stat-value{font-size:20px}
+}
+/* Handy: jede Bereitschaft als Karte */
+@media (max-width:700px){
+  .sb-times-table .sb-time{align-items:flex-end}
+  .sb-times-table .sb-col-name .shift-color-tag{font-size:14px}
+  .sb-times-table .sb-team-names{max-width:60vw;white-space:normal;text-align:right}
+  .sb-times-table td.sb-col-actions{width:auto;justify-content:flex-end;gap:6px;padding-top:6px!important}
+}
