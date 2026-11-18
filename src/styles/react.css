@@ -94,3 +94,18 @@ tr.sb-row-edit:focus-visible{outline:2px solid var(--accent-color);outline-offse
 .bday-chip{display:flex;align-items:center;gap:5px;width:fit-content;max-width:100%;margin:0 0 4px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:650;color:var(--ink);background:color-mix(in srgb,#e0a800 18%,var(--surface));border:1px solid color-mix(in srgb,#e0a800 40%,var(--line));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bday-chip span{overflow:hidden;text-overflow:ellipsis}
 .month-cell .bday-chip{font-size:10.5px;padding:1px 7px;margin-bottom:3px}
+
+/* Geburtstag als kleine Markierung neben der Tageszahl (Woche/Monat) – Feiertag bleibt rechts in derselben Zeile */
+.bday-mark{display:inline-flex;align-items:center;gap:3px;min-width:0;max-width:100%;padding:0 6px;border-radius:999px;font-size:10.5px;font-weight:700;line-height:16px;color:var(--ink);background:color-mix(in srgb,#e0a800 20%,var(--surface));border:1px solid color-mix(in srgb,#e0a800 45%,var(--line));white-space:nowrap}
+.bday-mark .bday-mark-txt{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.day-head .bday-mark.bday-week{margin:4px auto 0;max-width:calc(100% - 8px)}
+.month-cell{position:relative}
+.month-cell .bday-mark.bday-month{position:absolute;top:6px;left:32px;max-width:calc(100% - 40px);z-index:1}
+.month-cell.today .bday-mark.bday-month{top:6px}
+/* Tag mit Geburtstag UND Feiertag: Geburtstag links, Feiertag rechts, je höchstens die halbe Breite */
+.month-cell.has-bday .bday-mark.bday-month{max-width:calc(50% - 22px)}
+.month-cell.has-bday .hol-badge.hol-month{margin-left:auto;max-width:50%;overflow:hidden}
+.month-cell.has-bday .hol-badge.hol-month span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (min-width:901px){
+  body.cal-fit .month-cell.has-bday .hol-badge.hol-month{left:auto;max-width:50%}
+}

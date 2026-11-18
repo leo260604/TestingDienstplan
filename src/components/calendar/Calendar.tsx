@@ -435,6 +435,20 @@ export function Calendar({ area }: { area: Area }) {
       </div>
     ));
 
+  /* Kompakte Geburtstags-Markierung neben der Tageszahl (Woche/Monat) – teilt sich die Zeile mit einem Feiertag */
+  const bdayMark = (date: string, cls = '') => {
+    const ppl = bdayPeople(date);
+    if (!ppl.length) return null;
+    const names = ppl.map((p) => p.name).join(', ');
+    const short = ppl.length === 1 ? ppl[0].name.split(' ')[0] : `${ppl.length} Geburtstage`;
+    return (
+      <span className={`bday-mark ${cls}`} title={`Geburtstag: ${names}`} aria-label={`Geburtstag: ${names}`}>
+        <span aria-hidden="true">🎂</span>
+        <span className="bday-mark-txt">{short}</span>
+      </span>
+    );
+  };
+
   const dayStack = (date: string) => {
     const entries = dayEntries(date);
     if ((view === 'Monat' || view === 'Woche') && prefs.expandedMonthView) return entries.map((a) => dayCard(a));
@@ -517,15 +531,15 @@ export function Calendar({ area }: { area: Area }) {
             <div key={'h' + date} className={`day-head ${date === today ? 'today' : ''}${holCls(date)}`}>
               {W[i]}
               <b>{day(date).getDate()}</b>
+              {bdayMark(date, 'bday-week')}
               {holTag(date)}
               {tnHead(date)}
             </div>
           ))}
           {dates.map((date) => (
             <div key={date} className={`week-day-cell ${date === today ? 'today' : ''}${holCls(date)}${dropCls(date)}${inRange(date) ? ' workplace-range-selected' : ''}`} data-calendar-day={date} {...dropProps(date)} {...rangeProps(date)}>
-              {dayEntries(date).length || ownNoteField(date) || bdayPeople(date).length ? (
+              {dayEntries(date).length || ownNoteField(date) ? (
                 <>
-                  {bdays(date)}
                   {dayStack(date)}
                   {ownNoteField(date)}
                 </>
@@ -581,11 +595,11 @@ export function Calendar({ area }: { area: Area }) {
             <div className="month-cell is-blank" key={'b' + i} />
           ))}
           {monthDays.map((date) => (
-            <div key={date} className={`month-cell ${date === today ? 'today' : ''}${holCls(date)}${dropCls(date)}${inRange(date) ? ' workplace-range-selected' : ''}`} data-calendar-day={date} {...dropProps(date)} {...rangeProps(date)}>
+            <div key={date} className={`month-cell ${date === today ? 'today' : ''}${holCls(date)}${dropCls(date)}${inRange(date) ? ' workplace-range-selected' : ''}${bdayPeople(date).length ? ' has-bday' : ''}`} data-calendar-day={date} {...dropProps(date)} {...rangeProps(date)}>
               <div className="date">{day(date).getDate()}</div>
+              {bdayMark(date, 'bday-month')}
               {holTag(date, 'hol-month')}
               {data.teamNotes.some((x) => x.date === date && tnShown.has(x.team)) && tnHead(date, 'tn-month')}
-              {bdays(date)}
               {dayStack(date)}
             </div>
           ))}
