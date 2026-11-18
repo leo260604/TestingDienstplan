@@ -1,6 +1,6 @@
 'use client';
 /* Rollen & Berechtigungen, Audit Log, Export Audit, Hilfe */
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useApp } from '../AppProvider';
 import { useShell } from '../shell/AppShell';
 import { Avatar, FilterDropdown, Heading, Icon } from '../ui';
@@ -205,22 +205,15 @@ export function Roles() {
 function ExportLogButton({ audit }: { audit: boolean }) {
   const { data, user, f, toast, refresh } = useApp();
   const [open, setOpen] = useState(false);
-  const wrap = useRef<HTMLSpanElement>(null);
-  /* Klick außerhalb oder Esc schließt das Menü */
+  const [fmt, setFmt] = useState<'PDF' | 'XLSX' | 'CSV'>('PDF');
+  /* Esc schließt das Popup */
   useEffect(() => {
     if (!open) return;
-    const outside = (e: PointerEvent) => {
-      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
-    };
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
-    document.addEventListener('pointerdown', outside);
     document.addEventListener('keydown', key);
-    return () => {
-      document.removeEventListener('pointerdown', outside);
-      document.removeEventListener('keydown', key);
-    };
+    return () => document.removeEventListener('keydown', key);
   }, [open]);
   const list = audit ? data.auditLog : data.exportLog;
   const go = (fmt: 'PDF' | 'XLSX' | 'CSV') => {
@@ -248,23 +241,61 @@ function ExportLogButton({ audit }: { audit: boolean }) {
     void logExport({ report: title, format: fmt, rows: list.length, status: 'Erfolgreich', size }).then(refresh);
     toast(`Protokoll als ${fmt === 'XLSX' ? 'Excel' : fmt} exportiert.`);
   };
+  const fmtName = fmt === 'XLSX' ? 'Excel' : fmt;
   return (
-    <span className="export-log-wrap" style={{ position: 'relative' }} ref={wrap}>
-      <button className="btn primary" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+    <>
+      <button className="btn primary" aria-haspopup="dialog" onClick={() => setOpen(true)}>
         <Icon name="download" />
         {audit ? 'Log exportieren' : 'Protokoll exportieren'}
       </button>
       {open && (
-        <span className="duty-actions-menu react-menu">
-          {(['PDF', 'XLSX', 'CSV'] as const).map((x) => (
-            <button key={x} type="button" onClick={() => go(x)}>
-              <Icon name={x === 'PDF' ? 'file' : x === 'XLSX' ? 'grid' : 'download'} />
-              {x === 'XLSX' ? 'Excel' : x}
-            </button>
-          ))}
-        </span>
+        <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && setOpen(false)}>
+          <div className="modal export-modal log-export" role="dialog" aria-modal="true" aria-labelledby="log-export-title">
+            <div className="export-head">
+              <span className="export-head-ic">
+                <Icon name="download" />
+              </span>
+              <div>
+                <h2 id="log-export-title">{audit ? 'Audit Log exportieren' : 'Export-Protokoll exportieren'}</h2>
+                <small>
+                  {list.length.toLocaleString(f.locale)} {list.length === 1 ? 'Eintrag' : 'Einträge'} · vollständiges Protokoll
+                </small>
+              </div>
+              <button type="button" className="icon-btn" aria-label="Schließen" onClick={() => setOpen(false)}>
+                ×
+              </button>
+            </div>
+            <div className="export-body">
+              <div className="export-label">In welchem Format?</div>
+              <div className="export-formats" role="radiogroup">
+                {(
+                  [
+                    ['PDF', 'PDF', 'file', 'Zum Lesen & Drucken'],
+                    ['XLSX', 'Excel', 'grid', 'Formatiert, mit Filter'],
+                    ['CSV', 'CSV', 'download', 'Rohdaten für Importe'],
+                  ] as const
+                ).map(([v, l, ic, sub]) => (
+                  <button key={v} type="button" role="radio" aria-checked={fmt === v} className={`export-fmt ${fmt === v ? 'on' : ''}`} onClick={() => setFmt(v)} onDoubleClick={() => go(v)}>
+                    <Icon name={ic} />
+                    <b>{l}</b>
+                    <small>{sub}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="export-actions">
+              <button type="button" className="btn ghost" onClick={() => setOpen(false)}>
+                Abbrechen
+              </button>
+              <button type="button" className="btn primary" onClick={() => go(fmt)}>
+                <Icon name="download" />
+                Als {fmtName} exportieren
+              </button>
+            </div>
+          </div>
+        </div>
       )}
-    </span>
+    </>
   );
 }
 
