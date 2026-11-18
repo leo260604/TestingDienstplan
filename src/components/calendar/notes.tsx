@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { useApp } from '../AppProvider';
 import { Avatar, DateField, Field, Icon, Modal, ModalActions, Picker } from '../ui';
 import { day, isoDate } from '@/lib/dates';
-import { canNoteFor, teamNoteTeams, personByName } from '@/lib/access';
+import { canChangeTeamNote, canNoteFor, teamNoteTeams, personByName } from '@/lib/access';
 import { deleteEntry, deleteTeamNote, saveNote, saveTeamNote } from '@/server/actions/entries';
 import type { Entry, TeamNote } from '@/lib/types';
 
@@ -160,7 +160,7 @@ export function TeamNotesPopup({ date, shown, onClose, onEdit, onAdd }: { date: 
                 <b>{n.team}</b> · <Icon name="user" />
                 von <b>{n.author || '—'}</b>
               </small>
-              {allowed.includes(n.team) && (
+              {canChangeTeamNote(ctx, n) && (
                 <span className="np-actions">
                   <button type="button" className="icon-btn" aria-label="Teamnotiz bearbeiten" onClick={() => onEdit(n)}>
                     <Icon name="edit" />

@@ -17,6 +17,7 @@ import {
   managesTeam,
   rotationMembers,
   selfEditAllowed,
+  canChangeTeamNote,
   teamNoteTeams,
   currentUserTeamNames,
 } from '@/lib/access';
@@ -311,7 +312,7 @@ export async function saveTeamNote(inp: { id?: string; team: string; date: strin
     const team = c.data.teams.find((t) => t.name === inp.team)!;
     if (inp.id) {
       const ex = c.data.teamNotes.find((n) => n.id === inp.id);
-      if (!ex || !teamNoteTeams(c).includes(ex.team)) return fail('Diese Teamnotiz darfst du nicht bearbeiten.');
+      if (!ex || !canChangeTeamNote(c, ex)) return fail('Diese Teamnotiz darfst du nicht bearbeiten – nur die Teamleitung oder wer sie geschrieben hat.');
       await prisma.teamNote.update({ where: { id: ex.id }, data: { teamId: team.id, date: isoToDate(inp.date), text } });
       await audit(c, 'Geändert', 'Dienstplan', `Teamnotiz · ${team.name}`, { title: 'Teamnotiz geändert', object: `${team.name} · ${F.fmtIsoDate(inp.date)}`, before: ex.text, after: text });
       return ok('Teamnotiz gespeichert.');
@@ -325,7 +326,7 @@ export async function saveTeamNote(inp: { id?: string; team: string; date: strin
 export async function deleteTeamNote(id: string): Promise<ActionResult> {
   return withCtx(async (c) => {
     const n = c.data.teamNotes.find((x) => x.id === id);
-    if (!n || !teamNoteTeams(c).includes(n.team)) return fail('Diese Teamnotiz darfst du nicht löschen.');
+    if (!n || !canChangeTeamNote(c, n)) return fail('Diese Teamnotiz darfst du nicht löschen – nur die Teamleitung oder wer sie geschrieben hat.');
     await prisma.teamNote.delete({ where: { id } });
     await audit(c, 'Gelöscht', 'Dienstplan', `Teamnotiz · ${n.team}`, { title: 'Teamnotiz gelöscht', object: `${n.team} · ${F.fmtIsoDate(n.date)}`, before: n.text });
     return ok('Teamnotiz gelöscht.');

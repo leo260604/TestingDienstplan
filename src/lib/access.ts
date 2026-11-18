@@ -130,13 +130,16 @@ export function canNoteFor(c: Ctx, name: string): boolean {
   return false;
 }
 
+/** Teamnotizen anlegen: jeder für seine eigenen Teams (Admin, Abteilungsleitung, Lohnverrechnung für alle Teams im Blick) */
 export function teamNoteTeams(c: Ctx): string[] {
-  if (c.user.role === 'Admin') return c.data.teams.map((t) => t.name);
-  if (['Teamleiter', 'Deputy'].includes(c.user.role)) {
-    const mine = currentUserTeamNames(c);
-    return c.data.teams.filter((t) => mine.includes(t.name)).map((t) => t.name);
-  }
-  return [];
+  return scopeTeams(c).map((t) => t.name);
+}
+
+/** Teamnotiz bearbeiten/löschen: Admin, Abteilungsleitung, Teamleitung/Stellvertretung des Teams oder wer sie geschrieben hat */
+export function canChangeTeamNote(c: Ctx, n: { team: string; author: string }): boolean {
+  if (!teamNoteTeams(c).includes(n.team)) return false;
+  if (['Admin', 'Abteilungsleiter'].includes(c.user.role)) return true;
+  return canManageTeam(c, n.team) || (!!n.author && n.author === c.user.name);
 }
 
 /* ---------- Administration ---------- */
