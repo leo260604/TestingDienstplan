@@ -84,7 +84,7 @@ export function StandbyAdmin() {
       <section className="panel flush sb-times-panel">
         <div className="panel-toolbar sb-toolbar">
           <div>
-            <h2>Bereitschaftszeiten</h2>
+            <h2>Bereitschaft</h2>
           </div>
         </div>
         {times.length ? (
@@ -114,14 +114,17 @@ export function StandbyAdmin() {
                 {sorted.map((t) => {
                   const vari = isVariableStandby(t);
                   const list = standbyTimeTeams(t, data.teams);
-                  /* Bereitschaften haben keine eigene Farbe – sie übernehmen die Teamfarbe */
-                  const c = list.length === 1 ? teamColor(list[0]) : '#159da8';
+                  /* Bereitschaften haben keine eigene Farbe – sie übernehmen die Teamfarbe.
+                     Mehrere Teams: Farbverlauf über alle zugewiesenen Teamfarben */
+                  const cols = [...new Set(list.map((x) => teamColor(x)))];
+                  const c = cols[0] || '#159da8';
+                  const fill = cols.length > 1 ? `linear-gradient(90deg,${cols.join(',')})` : c;
                   return (
                     <tr key={t.id}>
                       <td>
-                        <span className="shift-color-tag" style={{ '--shift-color': c } as CSSProperties}>
+                        <span className={`shift-color-tag${cols.length > 1 ? ' sb-multi' : ''}`} style={{ '--shift-color': c, '--sb-fill': fill } as CSSProperties} title={list.map((x) => x.name).join(', ') || undefined}>
                           <i />
-                          {t.name}
+                          <span className="sb-name">{t.name}</span>
                         </span>
                       </td>
                       <td>{vari ? <span className="pill sb-type var">Variabel</span> : <span className="pill sb-type fix">Fix</span>}</td>
@@ -160,7 +163,7 @@ export function StandbyAdmin() {
                         <div className={`mini-scale${vari ? ' is-variable' : ''}`}>
                           {!vari &&
                             scaleSegments(t.start, t.end).map(([a, b]) => (
-                              <i key={a} style={{ left: `${(a / 24) * 100}%`, width: `${((b - a) / 24) * 100}%`, background: c }} />
+                              <i key={a} style={{ left: `${(a / 24) * 100}%`, width: `${((b - a) / 24) * 100}%`, background: fill }} />
                             ))}
                         </div>
                       </td>
@@ -200,7 +203,9 @@ function StandbyTimeEditor({ value, onClose }: { value: StandbyTime | null; onCl
   const [teamIds, setTeamIds] = useState<string[]>(value ? standbyTimeTeams(value, data.teams).map((t) => t.id) : []);
   const vr = type === 'variabel';
   /* Keine eigene Farbe: Anzeige in der Teamfarbe (bei genau einem Team), gespeichert bleibt der bisherige Wert */
-  const color = teamIds.length === 1 ? teamColor(data.teams.find((t) => t.id === teamIds[0])) : '#159da8';
+  const selCols = [...new Set(teamIds.map((id) => teamColor(data.teams.find((t) => t.id === id))))];
+  const color = selCols[0] || '#159da8';
+  const fill = selCols.length > 1 ? `linear-gradient(90deg,${selCols.join(',')})` : color;
   const keepColor = shiftHexColor(value?.color || '#159da8');
   const problem = !name.trim()
     ? 'Bitte eine Bezeichnung eingeben.'
@@ -289,7 +294,7 @@ function StandbyTimeEditor({ value, onClose }: { value: StandbyTime | null; onCl
                   start &&
                   end &&
                   start !== end &&
-                  scaleSegments(start, end).map(([a, b]) => <i key={a} style={{ left: `${(a / 24) * 100}%`, width: `${((b - a) / 24) * 100}%`, background: color }} />)}
+                  scaleSegments(start, end).map(([a, b]) => <i key={a} style={{ left: `${(a / 24) * 100}%`, width: `${((b - a) / 24) * 100}%`, background: fill }} />)}
               </div>
             </div>
           </div>
