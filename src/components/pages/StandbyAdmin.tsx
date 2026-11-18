@@ -1,14 +1,13 @@
 'use client';
-/* Bereitschaft verwalten: Bereitschaftszeiten (nur Admin) und Bereitschaftsfarben je Team */
+/* Bereitschaft verwalten: Bereitschaftszeiten (nur Admin). Bereitschaften haben keine eigene Farbe – sie übernehmen die Teamfarbe. */
 import { useState, type CSSProperties } from 'react';
 import { useApp } from '../AppProvider';
-import { ColorChoice, Field, Heading, Icon, Meter, Modal, ModalActions, MultiPick, Picker, TeamColorChoice, TimeRange } from '../ui';
+import { Field, Heading, Icon, Meter, Modal, ModalActions, MultiPick, Picker, TimeRange } from '../ui';
 import { durationHours, fmtHours, hoursOf, WD_SHORT } from '@/lib/dates';
 import {
   isVariableStandby,
   scaleSegments,
   shiftHexColor,
-  SHIFT_SWATCHES,
   standbyCoverage,
   standbyDays,
   standbyDaysLabel,
@@ -18,22 +17,19 @@ import {
   standbyTimeForTeam,
   standbyTimeTeams,
   standbyWdLabel,
-  STANDBY_COLORS,
   tRange,
 } from '@/lib/entries';
-import { canView, standbyColorTeams } from '@/lib/access';
-import { deleteStandbyTime, saveStandbyTime, setTeamStandbyColor } from '@/server/actions/admin';
-import type { StandbyTime, Team } from '@/lib/types';
+import { canView } from '@/lib/access';
+import { deleteStandbyTime, saveStandbyTime } from '@/server/actions/admin';
+import type { StandbyTime } from '@/lib/types';
 
 const badge = (t: { name: string }) => String(t.name).replace(/^Team\s+/i, '').slice(0, 2).toUpperCase() || 'T';
 
 export function StandbyAdmin() {
   const { ctx, data, user, run, ask, teamColor } = useApp();
   const [edit, setEdit] = useState<StandbyTime | 'new' | null>(null);
-  const [colorTeam, setColorTeam] = useState<Team | null>(null);
   if (!canView(ctx, 'Bereitschaft verwalten')) return <Heading title="Zugriff nicht möglich" />;
   const admin = user.role === 'Admin';
-  const colorTeams = standbyColorTeams(ctx);
   const times = data.standbyTimes;
   const varCount = times.filter((t) => isVariableStandby(t)).length;
   const cover = standbyCoverage(times);
@@ -55,7 +51,7 @@ export function StandbyAdmin() {
       {!admin && (
         <div className="readonly-note">
           <Icon name="eye" />
-          Bereitschaftszeiten kann nur ein Admin ändern{colorTeams.length ? ' – die Bereitschaftsfarbe deiner Teams kannst du unten anpassen.' : '.'}
+          Bereitschaftszeiten kann nur ein Admin ändern.
         </div>
       )}
       <div className="stats sb-stats">
@@ -116,9 +112,10 @@ export function StandbyAdmin() {
               </thead>
               <tbody>
                 {sorted.map((t) => {
-                  const c = shiftHexColor(t.color || '#159da8'),
-                    vari = isVariableStandby(t);
+                  const vari = isVariableStandby(t);
                   const list = standbyTimeTeams(t, data.teams);
+                  /* Bereitschaften haben keine eigene Farbe – sie übernehmen die Teamfarbe */
+                  const c = list.length === 1 ? teamColor(list[0]) : '#159da8';
                   return (
                     <tr key={t.id}>
                       <td>
@@ -187,44 +184,7 @@ export function StandbyAdmin() {
           <div className="empty-note sb-empty">{admin ? 'Noch keine Bereitschaftszeiten. Lege die erste an und wähle die Teams, die sie haben sollen.' : 'Es sind noch keine Bereitschaftszeiten angelegt.'}</div>
         )}
       </section>
-      {colorTeams.length > 0 && (
-        <section className="panel sb-colors-panel">
-          <div className="panel-head">
-            <h2>Bereitschaftsfarben</h2>
-          </div>
-          <div className="ta-grid">
-            {colorTeams.map((t) => (
-              <button key={t.id} type="button" className="ta-card" style={{ '--team': teamColor(t) } as CSSProperties} onClick={() => setColorTeam(t)}>
-                <span className="ta-card-top">
-                  <span className="ta-mark">{badge(t)}</span>
-                  <span className="ta-title">
-                    <b>{t.name}</b>
-                    <small>{teamColor(t)}</small>
-                  </span>
-                </span>
-                <span className="ta-foot">
-                  <span />
-                  <span className="ta-edit">
-                    Farbe ändern
-                    <Icon name="chev" />
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
       {edit && <StandbyTimeEditor value={edit === 'new' ? null : edit} onClose={() => setEdit(null)} />}
-      {colorTeam && (
-        <StandbyColorDialog
-          team={colorTeam}
-          onClose={() => setColorTeam(null)}
-          onSave={async (c) => {
-            const r = await run(setTeamStandbyColor(colorTeam.id, c));
-            if (r.ok) setColorTeam(null);
-          }}
-        />
-      )}
     </>
   );
 }
@@ -235,11 +195,13 @@ function StandbyTimeEditor({ value, onClose }: { value: StandbyTime | null; onCl
   const [type, setType] = useState<'fix' | 'variabel'>(value && isVariableStandby(value) ? 'variabel' : 'fix');
   const [start, setStart] = useState(value?.start || '');
   const [end, setEnd] = useState(value?.end || '');
-  const [color, setColor] = useState(shiftHexColor(value?.color || '#159da8'));
   const [days, setDays] = useState<number[]>(standbyDays(value || undefined));
   const [hol, setHol] = useState(standbyHol(value || undefined));
   const [teamIds, setTeamIds] = useState<string[]>(value ? standbyTimeTeams(value, data.teams).map((t) => t.id) : []);
   const vr = type === 'variabel';
+  /* Keine eigene Farbe: Anzeige in der Teamfarbe (bei genau einem Team), gespeichert bleibt der bisherige Wert */
+  const color = teamIds.length === 1 ? teamColor(data.teams.find((t) => t.id === teamIds[0])) : '#159da8';
+  const keepColor = shiftHexColor(value?.color || '#159da8');
   const problem = !name.trim()
     ? 'Bitte eine Bezeichnung eingeben.'
     : !days.length && !hol
@@ -263,7 +225,7 @@ function StandbyTimeEditor({ value, onClose }: { value: StandbyTime | null; onCl
       className="form-dialog sb-time-modal"
       onClose={onClose}
       onSubmit={async () => {
-        const r = await run(saveStandbyTime({ id: value?.id, name, type, start, end, color, days, hol, teamIds }));
+        const r = await run(saveStandbyTime({ id: value?.id, name, type, start, end, color: keepColor, days, hol, teamIds }));
         if (r.ok) onClose();
       }}
       footer={<ModalActions onCancel={onClose} okLabel={value ? 'Speichern' : 'Bereitschaftszeit anlegen'} disabled={!!problem} />}
@@ -331,9 +293,6 @@ function StandbyTimeEditor({ value, onClose }: { value: StandbyTime | null; onCl
               </div>
             </div>
           </div>
-          <Field label="Farbe in der Übersicht" className="shift-color-field">
-            <ColorChoice value={color} onChange={setColor} swatches={SHIFT_SWATCHES} />
-          </Field>
         </div>
       </div>
       <span hidden>{tRange({ start, end })}</span>
@@ -341,40 +300,3 @@ function StandbyTimeEditor({ value, onClose }: { value: StandbyTime | null; onCl
   );
 }
 
-function StandbyColorDialog({ team, onClose, onSave }: { team: Team; onClose: () => void; onSave: (c: string) => void }) {
-  const { data, teamColor } = useApp();
-  const [c, setC] = useState(teamColor(team).toLowerCase());
-  const sample = data.standbyTimes[0] || { name: 'Bereitschaft', start: '07:00', end: '19:00' };
-  return (
-    <Modal
-      title={`Bereitschaftsfarbe · ${team.name}`}
-      sub="Wird für alle Bereitschaftseinträge des Teams verwendet."
-      icon="moon"
-      headStyle={{ background: c, color: '#fff', boxShadow: `0 6px 16px -6px ${c}` }}
-      className="form-dialog nt-modal sb-color-modal"
-      onClose={onClose}
-      onSubmit={() => onSave(c)}
-      footer={<ModalActions onCancel={onClose} />}
-    >
-      <Field label="Farbe">
-        <TeamColorChoice value={c} onChange={setC} swatches={STANDBY_COLORS} />
-      </Field>
-      <Field label="Vorschau im Kalender">
-        <div className="sb-color-preview">
-          <span className="ta-mark sm" style={{ '--team': c } as CSSProperties}>
-            {badge(team)}
-          </span>
-          <div className="calendar-assignment standby-assignment" style={{ '--shift-color': c } as CSSProperties}>
-            <span className="standby-indicator">Bereitschaft</span>
-            <b>{sample.name}</b>
-            <small>{tRange(sample, ' – ')}</small>
-          </div>
-          <span className="sb-color-hex">
-            <i style={{ background: c }} />
-            {c}
-          </span>
-        </div>
-      </Field>
-    </Modal>
-  );
-}

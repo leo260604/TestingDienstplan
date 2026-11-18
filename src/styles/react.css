@@ -36,3 +36,8 @@ a.nav-item{color:inherit}
 .note-chip.note-solo:hover,.note-chip.note-solo:focus-visible{opacity:1;color:var(--ink);background:color-mix(in srgb,currentColor 12%,transparent)}
 .note-chip.note-solo .note-solo-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .month-cell .note-chip.note-solo{margin:1px 0 3px;font-size:10.5px}
+
+/* Bunte Farbauswahl („Eigene Farbe“) auf gleicher Höhe wie die anderen Farbfelder */
+.shift-color-presets{align-items:center}
+.shift-color-presets .color-swatch{margin:0;flex:none;align-self:center;vertical-align:middle}
+.shift-color-presets label.color-swatch.custom{display:block;padding:0;gap:0;line-height:0;font-size:0;box-sizing:border-box}
