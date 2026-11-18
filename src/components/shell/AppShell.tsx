@@ -433,7 +433,9 @@ function BirthdayField({ value, onSave }: { value: string; onSave: (v: { day: nu
   };
   return (
     <div className="field acc-birthday">
-      <span>Geburtstag</span>
+      <span>
+        Geburtstag <span className="muted">(freiwillig)</span>
+      </span>
       <div className="acc-bd-row">
         <select
           aria-label="Tag"
@@ -471,7 +473,7 @@ function BirthdayField({ value, onSave }: { value: string; onSave: (v: { day: nu
           ))}
         </select>
       </div>
-      <small className="muted">Ohne Jahr. Sichtbar nur für die Mitglieder deiner Teams – im Dienstplan an deinem Geburtstag.</small>
+      <small className="muted">Freiwillig, ohne Jahr. Damit deine Kollegen im Dienstplan sehen, wann du Geburtstag hast – sichtbar nur für die Mitglieder deiner Teams.</small>
     </div>
   );
 }
