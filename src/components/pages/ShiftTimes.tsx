@@ -76,7 +76,6 @@ export function ShiftTimes() {
                     </div>
                   </th>
                   <th className="hide-sm">Genutzt</th>
-                  <th>Aktionen</th>
                 </tr>
               </thead>
               <tbody>
@@ -85,7 +84,7 @@ export function ShiftTimes() {
                     const head =
                       x.team !== last ? (
                         <tr className="group-row" key={'g' + x.team}>
-                          <td colSpan={6}>
+                          <td colSpan={5}>
                             <Dot color={teamColor(x.team)} /> <b>{x.team}</b> <span className="muted">· {rows.filter((r) => r.team === x.team).length} Modelle</span>
                           </td>
                         </tr>
@@ -97,7 +96,14 @@ export function ShiftTimes() {
                     const over = hoursOf(x.end) <= hoursOf(x.start);
                     return [
                       head,
-                      <tr key={x.id}>
+                      <tr
+                        key={x.id}
+                        className={canE ? 'sb-row-edit' : ''}
+                        tabIndex={canE ? 0 : undefined}
+                        title={canE ? `${x.name} bearbeiten` : undefined}
+                        onClick={canE ? () => setEdit(x) : undefined}
+                        onKeyDown={canE ? (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setEdit(x)) : undefined}
+                      >
                         <td>
                           <span className="shift-color-tag" style={{ '--shift-color': color } as CSSProperties}>
                             <i />
@@ -128,29 +134,12 @@ export function ShiftTimes() {
                           </div>
                         </td>
                         <td className="hide-sm muted">{usage[x.team + '|' + x.name] || 0}×</td>
-                        <td className="nowrap row-actions">
-                          {canE ? (
-                            <>
-                              <button className="icon-btn" title="Bearbeiten" aria-label="Bearbeiten" onClick={() => setEdit(x)}>
-                                <Icon name="edit" />
-                              </button>
-                              <button className="icon-btn" title="Duplizieren" aria-label="Duplizieren" onClick={async () => { const r = await run(duplicateShiftType(x.id)); if (r.ok) setEdit({ ...x, id: r.data?.id, name: x.name + ' (Kopie)' }); }}>
-                                <Icon name="copy" />
-                              </button>
-                              <button className="icon-btn danger" title="Löschen" aria-label="Löschen" onClick={async () => (await ask(`Dienstzeit „${x.name}“ wirklich löschen?`)) && run(deleteShiftType(x.id))}>
-                                <Icon name="trash" />
-                              </button>
-                            </>
-                          ) : (
-                            <span className="muted">—</span>
-                          )}
-                        </td>
                       </tr>,
                     ];
                   })
                 ) : (
                   <tr>
-                    <td colSpan={6} className="empty-note">
+                    <td colSpan={5} className="empty-note">
                       Für diese Auswahl sind noch keine Dienstzeiten angelegt.
                     </td>
                   </tr>
@@ -160,13 +149,23 @@ export function ShiftTimes() {
           </div>
         </section>
       </div>
-      {edit && <ShiftEditor value={edit} onClose={() => setEdit(null)} />}
+      {edit && (
+        <ShiftEditor
+          key={edit.id || 'new'}
+          value={edit}
+          onClose={() => setEdit(null)}
+          onDuplicate={async (x) => {
+            const r = await run(duplicateShiftType(x.id!));
+            if (r.ok) setEdit({ ...x, id: r.data?.id, name: x.name + ' (Kopie)' });
+          }}
+        />
+      )}
     </>
   );
 }
 
-function ShiftEditor({ value, onClose }: { value: Partial<ShiftType>; onClose: () => void }) {
-  const { ctx, data, run, teamColor } = useApp();
+function ShiftEditor({ value, onClose, onDuplicate }: { value: Partial<ShiftType>; onClose: () => void; onDuplicate: (x: Partial<ShiftType>) => void }) {
+  const { ctx, data, run, ask, teamColor } = useApp();
   const editable = manageableTeams(ctx, 'Dienstzeiten');
   const [v, setV] = useState({ id: value.id, team: value.team || editable[0]?.name || '', name: value.name || '', start: value.start || '06:00', end: value.end || '14:12', multi: value.multi !== false, color: shiftHexColor(value.color) });
   const m = Math.max(0, Math.round(durationHours(v.start, v.end) * 60) - LUNCH_MIN);
@@ -182,7 +181,33 @@ function ShiftEditor({ value, onClose }: { value: Partial<ShiftType>; onClose: (
         const r = await run(saveShiftType(v));
         if (r.ok) onClose();
       }}
-      footer={<ModalActions onCancel={onClose} />}
+      footer={
+        <ModalActions
+          onCancel={onClose}
+          left={
+            value.id ? (
+              <span className="wp-actions-left">
+                <button
+                  type="button"
+                  className="btn ghost danger-text"
+                  onClick={async () => {
+                    if (!(await ask(`Dienstzeit „${value.name}“ wirklich löschen?`, 'Löschen'))) return;
+                    const r = await run(deleteShiftType(value.id!));
+                    if (r.ok) onClose();
+                  }}
+                >
+                  <Icon name="trash" />
+                  Löschen
+                </button>
+                <button type="button" className="btn ghost" onClick={() => onDuplicate(value)}>
+                  <Icon name="copy" />
+                  Duplizieren
+                </button>
+              </span>
+            ) : undefined
+          }
+        />
+      }
     >
       <div className="te-two">
         <Field label="Team">
