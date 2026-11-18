@@ -145,15 +145,7 @@ export function StandbyAdmin() {
                         ) : !list.length ? (
                           <span className="muted">Kein Team</span>
                         ) : (
-                          <span className="sb-team-stack" title={list.map((x) => x.name).join(', ')}>
-                            {list.slice(0, 4).map((x) => (
-                              <span key={x.id} className="ta-mark sm" style={{ '--team': teamColor(x) } as CSSProperties}>
-                                {badge(x)}
-                              </span>
-                            ))}
-                            {list.length > 4 && <span className="sb-team-more">+{list.length - 4}</span>}
-                            <span className="sb-team-names">{list.length === 1 ? list[0].name : `${list.length} Teams`}</span>
-                          </span>
+                          <span className="sb-team-names">{list.map((x) => x.name).join(', ')}</span>
                         )}
                       </td>
                       <td className="hide-sm">
