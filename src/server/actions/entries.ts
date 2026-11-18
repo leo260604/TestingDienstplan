@@ -1,5 +1,6 @@
 'use server';
 /* Dienste, Bereitschaften, Abwesenheiten, Arbeitsorte, Notizen und Rotation */
+import { dispatchExternal } from '../notify';
 import { prisma } from '../db';
 import { audit, fail, notifyAssignments, ok, withCtx, type ActionResult } from '../context';
 import { isoToDate, KIND_TO_DB } from '../mappers';
@@ -161,6 +162,9 @@ export async function deleteEntry(id: string): Promise<ActionResult> {
     if (!item) return fail('Der Eintrag wurde nicht gefunden.');
     if (!mayChangeEntry(c, item)) return fail('Du darfst Einträge dieses Teams nicht löschen.');
     await prisma.entry.delete({ where: { id } });
+    const owner = c.data.staff.find((p) => p.name === item.employee);
+    if (owner && owner.id !== c.user.id && (item.kind === 'Dienstplan' || item.kind === 'Bereitschaft') && !item.isAbsence)
+      await dispatchExternal([{ recipientId: owner.id, event: 'changedEntry', title: item.kind === 'Bereitschaft' ? 'Bereitschaft gelöscht' : 'Dienst gelöscht', message: `${item.shift}${item.start ? ' · ' + item.start + '–' + item.end + ' Uhr' : ''} · ${F.fmtIsoDate(item.date)} · gelöscht von ${c.user.name}`, link: `/${item.kind === 'Bereitschaft' ? 'bereitschaft' : 'dienstplan'}?date=${item.date}` }]);
     await audit(c, 'Gelöscht', item.kind === 'Bereitschaft' ? 'Bereitschaft' : 'Dienstplan', `${item.employee} · ${item.shift}${item.start ? ' ' + item.start + '–' + item.end : ''} · ${F.fmtIsoDate(item.date)}`, item.kind === 'Notiz' ? { title: 'Notiz gelöscht', object: item.employee, before: item.note } : {});
     return ok(item.kind === 'Arbeitsort' ? 'Arbeitsort wurde entfernt.' : item.kind === 'Notiz' ? 'Notiz gelöscht.' : 'Eintrag wurde gelöscht.');
   });
@@ -192,7 +196,7 @@ export async function moveEntry(id: string, date: string, employee?: string): Pr
       before: `${item.employee} · ${F.fmtIsoDate(item.date)}`,
       after: `${target} · ${F.fmtIsoDate(date)}`,
     });
-    if (item.kind !== 'Arbeitsort') await notifyAssignments(c, [{ ...item, employee: target, date }]);
+    if (item.kind !== 'Arbeitsort') await notifyAssignments(c, [{ ...item, employee: target, date }], { changed: true });
     return ok('Eintrag verschoben.');
   });
 }

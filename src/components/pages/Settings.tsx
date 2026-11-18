@@ -1,5 +1,5 @@
 'use client';
-/* Einstellungen: Kalender, Darstellung, Sprache & Datum, Funktionen (Admin), Links (Admin), Daten */
+/* Einstellungen: Kalender, Darstellung, Sprache & Datum, Benachrichtigungen, Funktionen (Admin), Links (Admin), Daten */
 import { useState } from 'react';
 import { useApp } from '../AppProvider';
 import { Heading, Icon, Segmented, Toggle } from '../ui';
@@ -10,6 +10,7 @@ import { downloadCsv, saveFile } from '@/lib/export/csv';
 import { archiveOldEntries } from '@/server/actions/entries';
 import { logExport, setCockpitLink, setFeature } from '@/server/actions/account';
 import type { DateFormat, ThemeMode } from '@/lib/types';
+import { channelLive, NOTIFY_CHANNELS, NOTIFY_EVENTS, normalizeIntegrations, type ExternalNotifyPrefs } from '@/lib/notifications';
 
 export function Settings() {
   const { data, user, prefs, setPrefs, f, toast, run, ask } = useApp();
@@ -20,6 +21,7 @@ export function Settings() {
     ['set-cal', 'cal', 'Kalender'],
     ['set-look', 'sun', 'Darstellung'],
     ['set-lang', 'grid', 'Sprache & Datum'],
+    ['set-notify', 'bell', 'Benachrichtigungen'],
     ...(admin
       ? ([
           ['set-feat', 'spark', 'Funktionen'],
@@ -126,6 +128,8 @@ export function Settings() {
               <span>Beispiel:</span> <b suppressHydrationWarning>{f.fmtWithWeekday(new Date())}</b>
             </div>
           </section>
+
+          <NotifySection />
 
           {admin && (
             <section className="settings-card" id="set-feat">
@@ -241,5 +245,74 @@ function Row({ title, sub, children }: { title: string; sub: string; children: R
       </div>
       {children}
     </div>
+  );
+}
+
+/* ---------- Benachrichtigungen per E-Mail / Microsoft Teams ---------- */
+function NotifySection() {
+  const { data, user, prefs, setPrefs, toast } = useApp();
+  const np = prefs.notifyExternal;
+  const integ = normalizeIntegrations(data.settings.integrations);
+  const me = data.staff.find((p) => p.id === user.id);
+  const lead = user.role !== 'Mitarbeiter' || data.teams.some((t) => t.leaderId === user.id || t.deputyId === user.id);
+  const events = NOTIFY_EVENTS.filter((e) => !e.lead || lead);
+  const save = (next: ExternalNotifyPrefs) => {
+    setPrefs({ notifyExternal: next });
+    toast('Einstellungen gespeichert.');
+  };
+  return (
+    <section className="settings-card" id="set-notify">
+      <h2>Benachrichtigungen</h2>
+      <div className={`info-box notify-status ${integ.connected ? 'is-live' : ''}`}>
+        <Icon name={integ.connected ? 'check' : 'lock'} />
+        <span>
+          {integ.connected ? (
+            <>
+              <b>Mit Microsoft Entra ID verbunden.</b> E-Mail {channelLive(integ, 'mail') ? 'aktiv' : 'noch nicht freigeschaltet'} · Teams {channelLive(integ, 'teams') ? 'aktiv' : 'noch nicht freigeschaltet'}.
+            </>
+          ) : (
+            <>
+              <b>Noch nicht aktiv.</b> E-Mail- und Teams-Benachrichtigungen werden verschickt, sobald die Anbindung an Microsoft Entra ID / Microsoft 365 eingerichtet ist. Deine Auswahl wird schon jetzt gespeichert.
+            </>
+          )}
+        </span>
+      </div>
+      <Row title="Per E-Mail benachrichtigen" sub={me?.email ? `An ${me.email}` : 'Keine E-Mail-Adresse hinterlegt – unter „Mein Konto“ eintragen'}>
+        <Toggle on={np.mail} label="E-Mail-Benachrichtigungen" onChange={(v) => save({ ...np, mail: v })} />
+      </Row>
+      <Row title="In Microsoft Teams benachrichtigen" sub="Als Teams-Nachricht an dein Microsoft-Konto">
+        <Toggle on={np.teams} label="Teams-Benachrichtigungen" onChange={(v) => save({ ...np, teams: v })} />
+      </Row>
+      <div className="notify-matrix" role="table" aria-label="Benachrichtigungen je Ereignis">
+        <div className="nm-row nm-head" role="row">
+          <span role="columnheader">Benachrichtigen bei</span>
+          {NOTIFY_CHANNELS.map((ch) => (
+            <span role="columnheader" key={ch.id} className={np[ch.id] ? '' : 'off'}>
+              <Icon name={ch.icon} />
+              {ch.label}
+            </span>
+          ))}
+        </div>
+        {events.map((e) => (
+          <div className="nm-row" role="row" key={e.id}>
+            <span role="cell" className="nm-txt">
+              <b>{e.title}</b>
+              <small>{e.sub}</small>
+            </span>
+            {NOTIFY_CHANNELS.map((ch) => (
+              <span role="cell" key={ch.id} className="nm-cell">
+                <Toggle
+                  on={np[ch.id] && np.events[e.id][ch.id]}
+                  disabled={!np[ch.id]}
+                  label={`${e.title} per ${ch.label}`}
+                  onChange={(v) => save({ ...np, events: { ...np.events, [e.id]: { ...np.events[e.id], [ch.id]: v } } })}
+                />
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
+      <p className="notify-foot">Benachrichtigungen in der App (Glocke) stellst du unter „Mein Konto“ → „Benachrichtigungen“ ein.</p>
+    </section>
   );
 }

@@ -193,6 +193,8 @@ export interface ExportEntry {
   size: number;
 }
 
+import { DEFAULT_EXTERNAL_NOTIFY, type ExternalNotifyPrefs, type IntegrationSettings } from './notifications';
+
 export type DateFormat = 'dmy' | 'iso' | 'mdy' | 'long';
 export type Lang = 'de' | 'en';
 export type ThemeMode = 'light' | 'dark' | 'system';
@@ -215,6 +217,8 @@ export interface UserPrefs {
   expandedMonthView: boolean;
   defaults: { Dienstplan: string; Bereitschaft: string };
   notify: { own: boolean; team: boolean; absence: boolean };
+  /** Benachrichtigungen per E-Mail / Microsoft Teams (aktiv, sobald Entra ID angebunden ist) */
+  notifyExternal: ExternalNotifyPrefs;
   favorites: string[];
   memberOrder: Record<string, string[]>;
   dashLayout: Record<string, DashLayout>;
@@ -233,6 +237,7 @@ export const DEFAULT_PREFS: UserPrefs = {
   expandedMonthView: false,
   defaults: { Dienstplan: 'Woche', Bereitschaft: 'Monat' },
   notify: { own: true, team: true, absence: true },
+  notifyExternal: DEFAULT_EXTERNAL_NOTIFY,
   favorites: [],
   memberOrder: {},
   dashLayout: {},
@@ -243,6 +248,8 @@ export const DEFAULT_PREFS: UserPrefs = {
 export interface AppSettings {
   features: { rotationDuty?: boolean; rotationStandby?: boolean };
   cockpitLink: { url?: string; by?: string; at?: number };
+  /** Anbindung an Microsoft Entra ID / Microsoft 365 (für Mail- und Teams-Benachrichtigungen) */
+  integrations?: Partial<IntegrationSettings>;
 }
 
 export interface CurrentUser {

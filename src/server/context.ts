@@ -6,6 +6,8 @@ import { requireUser } from './session';
 import { F } from '@/lib/dates';
 import type { Ctx, Entry, Person } from '@/lib/types';
 import type { Prisma } from '@/generated/prisma/client';
+import { dispatchExternal, type ExternalMessage } from './notify';
+import type { NotifyEvent } from '@/lib/notifications';
 
 export type ActionResult<T = undefined> = { ok: true; message?: string; data?: T } | { ok: false; message: string };
 export const ok = <T,>(message?: string, data?: T): ActionResult<T> => ({ ok: true, message, data });
@@ -32,11 +34,12 @@ export async function audit(c: Ctx, action: 'Erstellt' | 'Geändert' | 'Gelösch
 }
 
 /** Benachrichtigungen zu neuen Einträgen (respektiert die persönlichen Einstellungen der Empfänger) */
-export async function notifyAssignments(c: Ctx, items: Entry[], { absence = false } = {}) {
+export async function notifyAssignments(c: Ctx, items: Entry[], { absence = false, changed = false } = {}) {
   const prefsRows = await prisma.userPreference.findMany();
   const prefs = new Map(prefsRows.map((r) => [r.employeeId, ((r.data as { notify?: Record<string, boolean> })?.notify || {}) as Record<string, boolean>]));
   const pref = (id: string) => ({ own: true, team: true, absence: true, ...(prefs.get(id) || {}) });
   const out: Prisma.NotificationCreateManyInput[] = [];
+  const ext: ExternalMessage[] = [];
   for (const item of items) {
     const team = c.data.teams.find((t) => t.name === item.team);
     if (!team) continue;
@@ -48,7 +51,10 @@ export async function notifyAssignments(c: Ctx, items: Entry[], { absence = fals
     const add = (recipientId: string, recipientRole: string, title: string) => {
       if (!recipientId) return;
       const pr = pref(recipientId);
-      if (recipientRole === 'Mitarbeiter' || title.includes('für dich')) {
+      const own = recipientRole === 'Mitarbeiter' || title.includes('für dich');
+      // Mail/Teams: eigene Auswahl je Ereignis (unabhängig von den Glocken-Einstellungen)
+      ext.push({ recipientId, event: own ? (changed ? 'changedEntry' : 'newEntry') : absence ? 'absence' : 'teamEntry', title, message: details, link: `/${targetPage.toLowerCase()}?date=${item.date}` });
+      if (own) {
         if (!pr.own) return;
       } else if (absence ? !pr.absence : !pr.team) return;
       out.push({ recipientId, recipientRole, title, message: details, targetPage, targetDate: item.date, entryId: item.id });
@@ -62,10 +68,12 @@ export async function notifyAssignments(c: Ctx, items: Entry[], { absence = fals
     add(team.deputyId, 'Deputy', teamTitle);
   }
   if (out.length) await prisma.notification.createMany({ data: out });
+  await dispatchExternal(ext);
 }
 
-export async function notifyPerson(c: Ctx, person: Person | undefined, title: string, message: string, opts: { swapId?: string; targetDate?: string } = {}) {
+export async function notifyPerson(c: Ctx, person: Person | undefined, title: string, message: string, opts: { swapId?: string; targetDate?: string; event?: NotifyEvent } = {}) {
   if (!person) return;
+  await dispatchExternal([{ recipientId: person.id, event: opts.event || (opts.swapId ? 'swap' : 'changedEntry'), title, message, link: `/dienstplan${opts.targetDate ? '?date=' + opts.targetDate : ''}` }]);
   await prisma.notification.create({
     data: { recipientId: person.id, recipientRole: person.role || 'Mitarbeiter', title, message, swapId: opts.swapId, targetPage: 'Dienstplan', targetDate: opts.targetDate },
   });

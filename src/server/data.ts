@@ -1,5 +1,6 @@
 import 'server-only';
 /* Lädt den gesamten Datenstand, den die angemeldete Person sehen darf. */
+import { normalizeExternalNotify } from '@/lib/notifications';
 import { prisma } from './db';
 import { dateToIso, toEntry, toPerson, toStandbyTime, toSwap, toTeam } from './mappers';
 import { canViewArea } from '@/lib/permissions';
@@ -61,7 +62,7 @@ export async function loadAppData(user: CurrentUser): Promise<AppData> {
     })),
     auditLog: auditLog.map((a) => ({ id: a.id, ts: a.ts.getTime(), user: a.userName, role: a.role, action: a.action, area: a.area, detail: a.detail, title: a.title, object: a.object, before: a.before, after: a.after })),
     exportLog: exportLog.map((x) => ({ id: x.id, ts: x.ts.getTime(), user: x.userName, role: x.role, report: x.report, format: x.format, rows: x.rows, status: x.status, range: x.range, size: x.size })),
-    settings: { features: setting('features'), cockpitLink: setting('cockpitLink') },
+    settings: { features: setting('features'), cockpitLink: setting('cockpitLink'), integrations: setting('integrations') },
   };
 }
 
@@ -73,5 +74,6 @@ export async function loadPrefs(employeeId: string): Promise<UserPrefs> {
     ...data,
     defaults: { ...DEFAULT_PREFS.defaults, ...(data.defaults || {}) },
     notify: { ...DEFAULT_PREFS.notify, ...(data.notify || {}) },
+    notifyExternal: normalizeExternalNotify(data.notifyExternal),
   };
 }

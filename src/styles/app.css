@@ -2993,3 +2993,21 @@ body.dark-mode .wn-ic.wn-verbessert,body.dark-mode .wn-tag.wn-verbessert{color:#
 .wn-old .wn-items{padding:0 10px 10px}
 @media (max-width:600px){.wp-modal.wn-modal{max-height:92dvh}.wn-hero{padding:16px}.wn-hero-ver{font-size:21px}.wn-item{padding:11px 12px;gap:10px}.wn-old-stats{display:none}.wn-filter{display:flex}.wn-filter button{flex:1}}
 .wn-modal .wp-head{align-items:center}.wn-modal .wp-head h2{margin:0}
+/* ===== Einstellungen: Benachrichtigungen per E-Mail / Teams ===== */
+.notify-status{display:flex;gap:10px;align-items:flex-start;margin-bottom:6px}
+.notify-status .ic{flex:none;width:17px;height:17px;margin-top:1px}
+.notify-status.is-live .ic{color:var(--accent-color)}
+.notify-matrix{margin-top:10px;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.nm-row{display:grid;grid-template-columns:minmax(0,1fr) 84px 84px;align-items:center;gap:8px;padding:11px 14px;border-top:1px solid var(--line)}
+.nm-row:first-child{border-top:0}
+.nm-head{background:var(--surface-2);padding:8px 14px;font-size:12px;font-weight:650;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.nm-head span:not(:first-child){display:flex;align-items:center;justify-content:center;gap:5px;text-transform:none;letter-spacing:0;font-size:12.5px}
+.nm-head span.off{opacity:.45}
+.nm-head .ic{width:14px;height:14px}
+.nm-txt{display:flex;flex-direction:column;min-width:0}
+.nm-txt b{font-size:13.5px}
+.nm-txt small{font-size:12px;color:var(--muted)}
+.nm-cell{display:flex;justify-content:center}
+.toggle:disabled{opacity:.4;cursor:not-allowed}
+.notify-foot{margin:10px 0 0;font-size:12.5px;color:var(--muted)}
+@media(max-width:600px){.nm-row{grid-template-columns:minmax(0,1fr) 56px 56px;padding:10px 12px}.nm-head{padding:8px 12px}}
