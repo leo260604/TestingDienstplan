@@ -3058,3 +3058,13 @@ body.dark-mode .wn-ic.wn-verbessert,body.dark-mode .wn-tag.wn-verbessert{color:#
 .log-export .export-fmt small{display:block;font-size:11px;text-align:center;white-space:normal}
 .log-export .export-actions{padding:14px 22px 16px}
 @media(max-width:600px){.log-export .export-fmt small{display:none}}
+/* Berichte / Export: Formatkacheln wieder groß (Symbol über dem Text), Popup darf dafür höher werden */
+@media (min-width:601px){
+ .export-fmt{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:14px 8px;text-align:center}
+ .export-fmt .ic{width:20px;height:20px}
+ .export-fmt b{font-size:14px}
+ .export-fmt small{display:block;font-size:11px;text-align:center;white-space:normal}
+ .export-formats{gap:8px}
+ .export-body{padding-bottom:12px}
+ .export-actions{padding:14px 22px 16px}
+}
