@@ -3077,3 +3077,13 @@ body.dark-mode .wn-ic.wn-verbessert,body.dark-mode .wn-tag.wn-verbessert{color:#
   .notification-copy b{font-size:13.5px}
   .notification-copy p{font-size:13px}
 }
+/* Einstellungen am Handy/Tablet: Menü als Kachelraster statt seitlich scrollender Leiste */
+@media(max-width:900px){
+  .settings-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;overflow:visible;padding:8px}
+  .settings-nav .nav-item{width:auto;min-width:0;margin:0;padding:10px;border-radius:10px;background:var(--surface-2);border:1px solid var(--line-2);font-size:13px}
+  .settings-nav .nav-item .ic{flex:none;width:16px;height:16px;color:var(--accent-color)}
+  .settings-nav .nav-item em{min-width:0}
+}
+@media(max-width:560px){
+  .settings-nav{grid-template-columns:repeat(2,minmax(0,1fr))}
+}

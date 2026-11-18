@@ -11,7 +11,7 @@ import { archiveOldEntries } from '@/server/actions/entries';
 import { logExport, setCockpitLink, setFeature } from '@/server/actions/account';
 import type { DateFormat, ThemeMode } from '@/lib/types';
 import { offlineSavedAt, usePwaInstall } from '../PwaClient';
-import { getPushKey, removePushSubscription, savePushSubscription, sendTestPush } from '@/server/actions/push';
+import { checkPushSubscription, getPushKey, removePushSubscription, savePushSubscription, sendTestPush } from '@/server/actions/push';
 import { channelLive, NOTIFY_CHANNELS, NOTIFY_EVENTS, normalizeIntegrations, type ExternalNotifyPrefs } from '@/lib/notifications';
 
 export function Settings() {
@@ -356,7 +356,14 @@ function AppSection() {
     let alive = true;
     swReady()
       .then((reg) => reg.pushManager.getSubscription())
-      .then((sub) => alive && setPush(sub ? 'on' : 'off'))
+      .then(async (sub) => {
+        if (!sub) return alive && setPush('off');
+        // Nur als „aktiv“ zeigen, wenn das Abo dieses Geräts dem angemeldeten Benutzer gehört
+        const res = await checkPushSubscription(sub.endpoint);
+        const mine = res.ok && !!res.data?.mine;
+        if (!mine) await sub.unsubscribe().catch(() => false);
+        if (alive) setPush(mine ? 'on' : 'off');
+      })
       .catch(() => alive && setPush('off'));
     return () => {
       alive = false;
@@ -409,7 +416,7 @@ function AppSection() {
   const pushSub: Record<PushState, string> = {
     loading: 'Wird geprüft …',
     busy: 'Einen Moment …',
-    on: 'Aktiv – neue Einteilungen, Änderungen und Tauschanfragen erscheinen als Mitteilung auf diesem Gerät.',
+    on: 'Aktiv – nur deine eigenen Mitteilungen (neue Einteilungen, Änderungen, Tauschanfragen) erscheinen auf diesem Gerät.',
     off: 'Mitteilungen auf diesem Gerät erhalten, auch wenn DienstPlan geschlossen ist.',
     denied: 'Mitteilungen sind für diese Seite blockiert – bitte in den Browser- bzw. Systemeinstellungen erlauben.',
     'ios-install': 'Auf dem iPhone/iPad zuerst DienstPlan zum Home-Bildschirm hinzufügen und von dort öffnen.',
@@ -456,7 +463,7 @@ function AppSection() {
           </button>
         </div>
       )}
-      <p className="notify-foot">Push gilt je Gerät und Browser. Welche Ereignisse du bekommst, richtet sich nach deinen Glocken-Einstellungen unter „Mein Konto“ → „Benachrichtigungen“.</p>
+      <p className="notify-foot">Push gilt je Gerät und nur für die Person, die dort angemeldet ist – beim Abmelden oder wenn sich jemand anderes anmeldet, wird Push auf dem Gerät beendet. Welche Ereignisse du bekommst, richtet sich nach deinen Glocken-Einstellungen unter „Mein Konto“ → „Benachrichtigungen“.</p>
     </section>
   );
 }

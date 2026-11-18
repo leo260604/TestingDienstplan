@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useApp } from './AppProvider';
 import { addDays, isoDate } from '@/lib/dates';
+import { checkPushSubscription, removePushSubscription } from '@/server/actions/push';
 
 export const OFFLINE_KEY = 'dp-offline-plan';
 
@@ -71,8 +72,17 @@ export function PwaClient() {
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
-  }, []);
+    navigator.serviceWorker
+      .register('/sw.js', { scope: '/' })
+      .then(async (reg) => {
+        // Push nur für den hier angemeldeten Benutzer: Abo einer anderen Person auf diesem Gerät beenden
+        const sub = 'pushManager' in reg ? await reg.pushManager.getSubscription() : null;
+        if (!sub) return;
+        const res = await checkPushSubscription(sub.endpoint);
+        if (res.ok && !res.data?.mine) await sub.unsubscribe();
+      })
+      .catch(() => {});
+  }, [user.id]);
 
   // Eigenen Plan (7 Tage zurück bis 90 Tage voraus) für die Offline-Ansicht ablegen
   useEffect(() => {
@@ -89,4 +99,23 @@ export function PwaClient() {
   }, [data.entries, user.name]);
 
   return null;
+}
+
+/** Beim Abmelden: Push-Abo dieses Geräts beenden und den Offline-Plan löschen */
+export async function forgetDevice(): Promise<void> {
+  try {
+    localStorage.removeItem(OFFLINE_KEY);
+  } catch {
+    /* egal */
+  }
+  try {
+    const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration('/') : undefined;
+    const sub = reg && 'pushManager' in reg ? await reg.pushManager.getSubscription() : null;
+    if (sub) {
+      await removePushSubscription(sub.endpoint).catch(() => undefined);
+      await sub.unsubscribe().catch(() => false);
+    }
+  } catch {
+    /* Abmelden darf daran nie scheitern */
+  }
 }

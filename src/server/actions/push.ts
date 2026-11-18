@@ -42,3 +42,16 @@ export async function sendTestPush(): Promise<ActionResult> {
     return fail(`Die Testnachricht konnte nicht zugestellt werden${r.errors[0] ? ' – ' + r.errors[0] : ''}. Bitte Push auf diesem Gerät aus- und wieder einschalten.`);
   });
 }
+
+/** Gehört das Push-Abo dieses Geräts dem angemeldeten Benutzer? Abos anderer Benutzer werden entfernt,
+    damit auf einem Gerät nur Mitteilungen für die Person ankommen, die dort gerade angemeldet ist. */
+export async function checkPushSubscription(endpoint: string): Promise<ActionResult<{ mine: boolean }>> {
+  return withCtx(async (c) => {
+    const ep = String(endpoint || '');
+    if (!ep) return ok<{ mine: boolean }>('', { mine: false });
+    const row = await prisma.pushSubscription.findUnique({ where: { endpoint: ep } });
+    if (row && row.employeeId === c.user.id) return ok<{ mine: boolean }>('', { mine: true });
+    if (row) await prisma.pushSubscription.delete({ where: { endpoint: ep } });
+    return ok<{ mine: boolean }>('', { mine: false });
+  });
+}

@@ -12,7 +12,7 @@ import { currentUserTeamNames, pagesFor } from '@/lib/access';
 import { isoWeek } from '@/lib/dates';
 import { CHANGELOG, APP_VERSION } from '@/lib/changelog';
 import { deleteNotifications, markNotificationsRead, saveMyBirthday, updateMyAccount } from '@/server/actions/account';
-import { PwaClient } from '../PwaClient';
+import { forgetDevice, PwaClient } from '../PwaClient';
 import { logout } from '@/server/actions/auth';
 import { tRange } from '@/lib/entries';
 import type { Page } from '@/lib/types';
@@ -388,12 +388,8 @@ function AccountMenu() {
               <Icon name="gear" />
               Einstellungen
             </Link>
-            <button type="button" className="btn" onClick={() => {
-                try {
-                  localStorage.removeItem('dp-offline-plan');
-                } catch {
-                  /* egal */
-                }
+            <button type="button" className="btn" onClick={async () => {
+                await forgetDevice();
                 void logout();
               }}>
               <Icon name="refresh" />
