@@ -1,5 +1,6 @@
 'use client';
 /* Administration: Abteilungen, Teams, Verantwortliche, Mitglieder und Teamregeln */
+import { WEEKDAYS_SHORT } from '@/lib/staffing';
 import { useState, type CSSProperties } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useApp } from '../AppProvider';
@@ -461,6 +462,41 @@ function TeamEditor({ team, onClose }: { team: Team; onClose: () => void }) {
               </section>
               <SelfRule icon="cal" label="Dienste selbst eintragen" desc="Wer eigene Dienste im Dienstplan anlegen und bearbeiten darf." name="selfDuty" mode={d.settings.selfDuty} ids={d.settings.selfDutyIds} onMode={(selfDuty) => setS({ selfDuty })} onIds={(selfDutyIds) => setS({ selfDutyIds })} mem={mem} color={d.color} editable={caps.settings} />
               <SelfRule icon="moon" label="Bereitschaft selbst eintragen" desc="Wer eigene Bereitschaften anlegen und bearbeiten darf." name="selfStandby" mode={d.settings.selfStandby} ids={d.settings.selfStandbyIds} onMode={(selfStandby) => setS({ selfStandby })} onIds={(selfStandbyIds) => setS({ selfStandbyIds })} mem={mem} color={d.color} editable={caps.settings} />
+              <section className="ts-block">
+                <div className="ts-block-head">
+                  <span className="ts-ic">
+                    <Icon name="users" />
+                  </span>
+                  <div>
+                    <b>Mindestbesetzung</b>
+                    <small>Wie viele Teammitglieder pro Tag mindestens Dienst haben sollen. Bei Unterbesetzung warnt der Dienstplan und das Dashboard.</small>
+                  </div>
+                </div>
+                <div className="min-staff-grid">
+                  {WEEKDAYS_SHORT.map((wd, i) => (
+                    <label key={wd} className="min-staff-day">
+                      <span>{wd}</span>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        max={Math.max(1, d.memberIds.length)}
+                        value={d.settings.minStaff?.[i] || 0}
+                        disabled={!caps.settings}
+                        aria-label={`Mindestbesetzung ${wd}`}
+                        onChange={(e) => {
+                          const next = [...(d.settings.minStaff || [0, 0, 0, 0, 0, 0, 0])];
+                          next[i] = Math.max(0, Math.min(99, Math.round(Number(e.target.value) || 0)));
+                          setS({ minStaff: next });
+                        }}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <p className="ts-note">
+                  {(d.settings.minStaff || []).some((n) => n > 0) ? `Gezählt werden Teammitglieder mit Dienst – ganztägig Abwesende zählen nicht. 0 = keine Vorgabe.` : 'Keine Vorgabe – es wird nicht gewarnt. 0 = keine Vorgabe.'}
+                </p>
+              </section>
             </div>
           )}
         </div>

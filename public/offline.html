@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#14A1A9">
+<title>DienstPlan · Offline</title>
+<link rel="icon" href="/icons/logo-mark.svg">
+<style>
+  :root{--bg:#f4f6f7;--surface:#fff;--ink:#16202a;--muted:#66727d;--line:#e2e7ea;--accent:#14A1A9;--accent-soft:#e6f6f6;--amber:#c27a12;--amber-soft:#fdf2df}
+  @media (prefers-color-scheme:dark){:root{--bg:#0f1418;--surface:#171e23;--ink:#e8eef1;--muted:#95a3ad;--line:#26313a;--accent-soft:rgba(20,161,169,.16);--amber-soft:rgba(214,155,56,.18)}}
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+  .wrap{max-width:640px;margin:0 auto;padding:18px 16px 40px}
+  header{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+  header img{width:34px;height:34px}
+  header h1{font-size:19px;margin:0}
+  header small{display:block;color:var(--muted);font-size:12.5px}
+  .banner{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:12px;background:var(--amber-soft);color:var(--ink);font-size:13px;margin-bottom:16px}
+  .banner button{margin-left:auto;border:0;border-radius:9px;padding:7px 12px;background:var(--accent);color:#fff;font-weight:650;font-size:13px;cursor:pointer}
+  .day{margin:0 0 12px}
+  .day h2{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:0 0 6px;font-weight:750}
+  .day.today h2{color:var(--accent)}
+  .item{display:flex;align-items:center;gap:12px;padding:10px 12px;margin-bottom:6px;border-radius:12px;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--c,var(--accent))}
+  .item b{display:block;font-size:14.5px}
+  .item small{color:var(--muted);font-size:12.5px}
+  .tag{margin-left:auto;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+  .tag.abs{background:var(--amber-soft);color:var(--amber)}
+  .empty{padding:24px 16px;text-align:center;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:14px}
+  footer{margin-top:18px;color:var(--muted);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="/icons/logo-mark.svg" alt="">
+    <div><h1>Mein Plan</h1><small id="who">DienstPlan Pro · offline</small></div>
+  </header>
+  <div class="banner"><span>Keine Verbindung – du siehst den zuletzt gespeicherten Stand.</span><button type="button" onclick="location.reload()">Erneut versuchen</button></div>
+  <main id="list"></main>
+  <footer id="stand"></footer>
+</div>
+<script>
+(function () {
+  var list = document.getElementById('list');
+  var plan = null;
+  try { plan = JSON.parse(localStorage.getItem('dp-offline-plan') || 'null'); } catch (e) {}
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  if (!plan || !plan.entries) {
+    list.innerHTML = '<div class="empty">Noch kein Plan gespeichert.<br>Öffne DienstPlan einmal mit Internet – danach ist dein Plan auch offline verfügbar.</div>';
+    return;
+  }
+  document.getElementById('who').textContent = (plan.user || '') + ' · offline';
+  if (plan.savedAt) document.getElementById('stand').textContent = 'Stand: ' + new Date(plan.savedAt).toLocaleString('de-AT', { dateStyle: 'medium', timeStyle: 'short' });
+  var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  var now = new Date();
+  var today = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+  var rows = plan.entries.filter(function (a) { return a.date >= today; }).sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : String(a.start || '').localeCompare(String(b.start || '')); });
+  if (!rows.length) {
+    list.innerHTML = '<div class="empty">Keine kommenden Einträge im gespeicherten Plan.</div>';
+    return;
+  }
+  var byDay = {};
+  rows.forEach(function (a) { (byDay[a.date] = byDay[a.date] || []).push(a); });
+  var html = '';
+  Object.keys(byDay).forEach(function (d) {
+    var dt = new Date(d + 'T12:00:00');
+    var label = dt.toLocaleDateString('de-AT', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+    html += '<section class="day' + (d === today ? ' today' : '') + '"><h2>' + (d === today ? 'Heute · ' : '') + esc(label) + '</h2>';
+    byDay[d].forEach(function (a) {
+      var kind = a.isAbsence ? 'Abwesenheit' : a.kind === 'Bereitschaft' ? 'Bereitschaft' : a.kind === 'Arbeitsort' ? a.shift : 'Dienst';
+      var time = a.start && a.end ? a.start + ' – ' + a.end + ' Uhr' : 'ganztägig';
+      html += '<div class="item" style="--c:' + esc(a.color || '') + '"><div><b>' + esc(a.shift) + '</b><small>' + esc(time) + (a.team ? ' · ' + esc(a.team) : '') + '</small></div><span class="tag' + (a.isAbsence ? ' abs' : '') + '">' + esc(kind) + '</span></div>';
+    });
+    html += '</section>';
+  });
+  list.innerHTML = html;
+})();
+</script>
+</body>
+</html>

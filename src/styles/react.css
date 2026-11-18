@@ -103,7 +103,6 @@ tr.sb-row-edit:focus-visible{outline:2px solid var(--accent-color);outline-offse
 .bday-mark{display:inline-flex;align-items:center;gap:3px;min-width:0;max-width:100%;padding:0 6px;border-radius:999px;font-size:10.5px;font-weight:700;line-height:16px;color:var(--ink);background:color-mix(in srgb,#e0a800 20%,var(--surface));border:1px solid color-mix(in srgb,#e0a800 45%,var(--line));white-space:nowrap}
 .bday-mark .bday-mark-txt{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .day-head .bday-mark.bday-week{margin:4px auto 0;max-width:calc(100% - 8px)}
-.month-cell{position:relative}
 .month-cell .bday-mark.bday-month{position:absolute;top:6px;left:32px;max-width:calc(100% - 40px);z-index:1}
 .month-cell.today .bday-mark.bday-month{top:6px}
 /* Tag mit Geburtstag UND Feiertag: Geburtstag links, Feiertag rechts, je höchstens die halbe Breite */
@@ -133,3 +132,57 @@ tr.sb-row-edit:focus-visible{outline:2px solid var(--accent-color);outline-offse
 .dpk-link.danger-text,
 .acc-birthday .acc-bd-clear{border:1px solid color-mix(in srgb,var(--red) 60%,transparent);color:var(--red)}
 .btn.danger:hover,.btn.danger-text:hover,.link-btn.danger-text:hover,.dpk-link.danger-text:hover,.acc-birthday .acc-bd-clear:hover{border-color:var(--red);background:color-mix(in srgb,var(--red) 12%,transparent);color:var(--red)}
+
+/* ===== Mindestbesetzung: Warnung bei Unterbesetzung ===== */
+.under-mark{display:inline-flex;align-items:center;gap:3px;margin-top:3px;padding:1px 6px;border-radius:999px;background:color-mix(in srgb,var(--red,#d64545) 14%,transparent);color:var(--red,#d64545);font-size:10.5px;font-weight:750;line-height:1.5;white-space:nowrap;max-width:100%}
+.under-mark .ic{width:11px;height:11px;flex:none}
+.under-mark-txt{overflow:hidden;text-overflow:ellipsis}
+.day-head .under-mark{align-self:center}
+.month-cell .under-mark{align-self:flex-start;margin:2px 0 4px}
+.under-banner{display:flex;align-items:flex-start;gap:8px;margin:6px 0;padding:8px 10px;border-radius:10px;background:color-mix(in srgb,var(--red,#d64545) 10%,transparent);color:var(--ink);font-size:12.5px;border:1px solid color-mix(in srgb,var(--red,#d64545) 30%,transparent)}
+.under-banner .ic{width:15px;height:15px;color:var(--red,#d64545);flex:none;margin-top:1px}
+.tm-cov.under{color:var(--red,#d64545);background:color-mix(in srgb,var(--red,#d64545) 8%,transparent)}
+.tm-cov.under .ic{width:13px;height:13px}
+.tm-cov .tm-min{font-size:10px;font-weight:600;color:var(--muted)}
+.tm-cov.under .tm-min{color:inherit;opacity:.8}
+.md-cov .ic{width:12px;height:12px;vertical-align:-2px;margin-right:2px}
+/* Teamregeln: Mindestbesetzung je Wochentag */
+.min-staff-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-top:10px}
+.min-staff-day{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;font-weight:650;color:var(--muted)}
+.min-staff-day input{width:100%;max-width:64px;text-align:center;padding:7px 4px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font:inherit;font-size:14px;font-weight:700}
+.min-staff-day input:focus{outline:none;border-color:var(--accent-color);box-shadow:0 0 0 3px var(--accent-ring)}
+.min-staff-day input:disabled{opacity:.6}
+
+/* ===== Wochenvorlagen ===== */
+.tpl-modal{width:min(620px,100%)}
+.tpl-sec-head{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:13.5px}
+.tpl-sec-head .ic{width:16px;height:16px;color:var(--accent-color)}
+.tpl-list-head{margin-top:18px}
+.tpl-save{padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+.tpl-save-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.tpl-save-grid .wp-field{margin:0}
+.tpl-save-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;flex-wrap:wrap}
+.tpl-list{display:grid;gap:8px}
+.tpl-card{border:1.5px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden;transition:border-color .15s}
+.tpl-card.open{border-color:var(--accent-color)}
+.tpl-card-head{display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;background:none;border:0;color:var(--ink);text-align:left;cursor:pointer}
+.tpl-card-ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none;background:var(--accent-soft);color:var(--accent-color)}
+.tpl-card-ic .ic{width:16px;height:16px}
+.tpl-card-txt{display:flex;flex-direction:column;min-width:0;flex:1}
+.tpl-card-txt b{font-size:14px}
+.tpl-card-txt small{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tpl-days{display:flex;gap:3px;flex:none}
+.tpl-days span{width:18px;height:18px;border-radius:5px;display:grid;place-items:center;font-size:10px;font-weight:700;color:var(--muted);background:var(--surface-3)}
+.tpl-days span.on{background:var(--accent-soft);color:var(--accent-color)}
+.tpl-chev{width:15px;height:15px;color:var(--muted);flex:none;transition:transform .15s}
+.tpl-card.open .tpl-chev{transform:rotate(180deg)}
+.tpl-card-body{padding:4px 12px 12px;border-top:1px solid var(--line);display:grid;gap:10px}
+.tpl-card-body .wp-field{margin:8px 0 0}
+.tpl-card-actions{display:flex;justify-content:space-between;gap:8px}
+.tpl-empty{display:flex;gap:10px;align-items:flex-start;padding:14px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font-size:13px}
+.tpl-empty .ic{width:18px;height:18px;flex:none}
+@media(max-width:600px){.tpl-save-grid{grid-template-columns:1fr}.tpl-days{display:none}}
+
+/* ===== Einstellungen: App & Push ===== */
+#set-app .pill .ic{width:13px;height:13px;vertical-align:-2px}
+.app-push-test{display:flex;justify-content:flex-end;margin:4px 0 2px}

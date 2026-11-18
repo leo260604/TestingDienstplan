@@ -48,6 +48,8 @@ export interface TeamSettings {
   selfDutyIds: string[];
   selfStandby: SelfMode;
   selfStandbyIds: string[];
+  /** Mindestbesetzung je Wochentag (Index 0 = Montag … 6 = Sonntag); 0 = keine Vorgabe */
+  minStaff: number[];
 }
 
 export interface Team {
@@ -248,11 +250,35 @@ export const DEFAULT_PREFS: UserPrefs = {
   seenVersion: '',
 };
 
+/** Wochenvorlage: Musterwoche eines Teams (Dienste oder Bereitschaften), auf beliebige Wochen anwendbar */
+export interface WeekTemplateItem {
+  /** Wochentag: 0 = Montag … 6 = Sonntag */
+  d: number;
+  employeeId: string;
+  shift: string;
+  start: string;
+  end: string;
+  color: string;
+  groupId?: string;
+  groupName?: string;
+}
+export interface WeekTemplate {
+  id: string;
+  name: string;
+  area: 'Dienstplan' | 'Bereitschaft';
+  teamId: string;
+  items: WeekTemplateItem[];
+  by: string;
+  at: number;
+}
+
 export interface AppSettings {
   features: { rotationDuty?: boolean; rotationStandby?: boolean };
   cockpitLink: { url?: string; by?: string; at?: number };
   /** Anbindung an Microsoft Entra ID / Microsoft 365 (für Mail- und Teams-Benachrichtigungen) */
   integrations?: Partial<IntegrationSettings>;
+  /** Wochenvorlagen (Musterwochen) */
+  weekTemplates?: WeekTemplate[];
 }
 
 export interface CurrentUser {

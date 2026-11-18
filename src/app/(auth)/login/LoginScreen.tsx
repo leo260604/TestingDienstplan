@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState, useTransition, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, useTransition, type CSSProperties } from 'react';
 import { loginDemo, loginMicrosoft, loginPassword } from '@/server/actions/auth';
 import { initials } from '@/lib/demo-data';
 
@@ -25,6 +25,14 @@ const Av = ({ u, size }: { u: LoginUser; size: number }) => (
 );
 
 export function LoginScreen({ demo, sso, error, stats, heroDuty, heroStandby, users }: { demo: boolean; sso: boolean; error: string; stats: string; heroDuty: { title: string; sub: string } | null; heroStandby: { title: string; sub: string } | null; users: LoginUser[] }) {
+  // Nach dem Abmelden keinen persönlichen Plan mehr offline auf dem Gerät lassen
+  useEffect(() => {
+    try {
+      localStorage.removeItem('dp-offline-plan');
+    } catch {
+      /* egal */
+    }
+  }, []);
   const [sel, setSel] = useState(users[0]?.id || '');
   const [q, setQ] = useState('');
   const [msg, setMsg] = useState(error);

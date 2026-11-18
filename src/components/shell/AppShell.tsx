@@ -12,6 +12,7 @@ import { currentUserTeamNames, pagesFor } from '@/lib/access';
 import { isoWeek } from '@/lib/dates';
 import { CHANGELOG, APP_VERSION } from '@/lib/changelog';
 import { deleteNotifications, markNotificationsRead, saveMyBirthday, updateMyAccount } from '@/server/actions/account';
+import { PwaClient } from '../PwaClient';
 import { logout } from '@/server/actions/auth';
 import { tRange } from '@/lib/entries';
 import type { Page } from '@/lib/types';
@@ -86,6 +87,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <ShellContext.Provider value={api}>
+      <PwaClient />
       <div className="app-shell">
         <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'open' : ''}`} id="sidebar">
           <div className="brand">
@@ -386,7 +388,14 @@ function AccountMenu() {
               <Icon name="gear" />
               Einstellungen
             </Link>
-            <button type="button" className="btn" onClick={() => logout()}>
+            <button type="button" className="btn" onClick={() => {
+                try {
+                  localStorage.removeItem('dp-offline-plan');
+                } catch {
+                  /* egal */
+                }
+                void logout();
+              }}>
               <Icon name="refresh" />
               Abmelden
             </button>

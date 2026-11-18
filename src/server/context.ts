@@ -7,6 +7,7 @@ import { F } from '@/lib/dates';
 import type { Ctx, Entry, Person } from '@/lib/types';
 import type { Prisma } from '@/generated/prisma/client';
 import { dispatchExternal, type ExternalMessage } from './notify';
+import { sendPush } from './push';
 import type { NotifyEvent } from '@/lib/notifications';
 
 export type ActionResult<T = undefined> = { ok: true; message?: string; data?: T } | { ok: false; message: string };
@@ -68,6 +69,7 @@ export async function notifyAssignments(c: Ctx, items: Entry[], { absence = fals
     add(team.deputyId, 'Deputy', teamTitle);
   }
   if (out.length) await prisma.notification.createMany({ data: out });
+  await sendPush(out.map((n) => ({ recipientId: n.recipientId, title: n.title, body: n.message, url: `/${String(n.targetPage || 'Dienstplan').toLowerCase()}${n.targetDate ? '?date=' + n.targetDate : ''}` })));
   await dispatchExternal(ext);
 }
 
@@ -77,4 +79,5 @@ export async function notifyPerson(c: Ctx, person: Person | undefined, title: st
   await prisma.notification.create({
     data: { recipientId: person.id, recipientRole: person.role || 'Mitarbeiter', title, message, swapId: opts.swapId, targetPage: 'Dienstplan', targetDate: opts.targetDate },
   });
+  await sendPush([{ recipientId: person.id, title, body: message, url: `/dienstplan${opts.targetDate ? '?date=' + opts.targetDate : ''}` }]);
 }

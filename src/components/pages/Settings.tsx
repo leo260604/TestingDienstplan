@@ -1,6 +1,6 @@
 'use client';
 /* Einstellungen: Kalender, Darstellung, Sprache & Datum, Benachrichtigungen, Funktionen (Admin), Links (Admin), Daten */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../AppProvider';
 import { Heading, Icon, Segmented, Toggle } from '../ui';
 import { CockpitDialog } from '../dashboard/Dashboard';
@@ -10,6 +10,8 @@ import { downloadCsv, saveFile } from '@/lib/export/csv';
 import { archiveOldEntries } from '@/server/actions/entries';
 import { logExport, setCockpitLink, setFeature } from '@/server/actions/account';
 import type { DateFormat, ThemeMode } from '@/lib/types';
+import { offlineSavedAt, usePwaInstall } from '../PwaClient';
+import { getPushKey, removePushSubscription, savePushSubscription, sendTestPush } from '@/server/actions/push';
 import { channelLive, NOTIFY_CHANNELS, NOTIFY_EVENTS, normalizeIntegrations, type ExternalNotifyPrefs } from '@/lib/notifications';
 
 export function Settings() {
@@ -22,6 +24,7 @@ export function Settings() {
     ['set-look', 'sun', 'Darstellung'],
     ['set-lang', 'grid', 'Sprache & Datum'],
     ['set-notify', 'bell', 'Benachrichtigungen'],
+    ['set-app', 'phone', 'App & Push'],
     ...(admin
       ? ([
           ['set-feat', 'spark', 'Funktionen'],
@@ -130,6 +133,8 @@ export function Settings() {
           </section>
 
           <NotifySection />
+
+          <AppSection />
 
           {admin && (
             <section className="settings-card" id="set-feat">
@@ -313,6 +318,129 @@ function NotifySection() {
         ))}
       </div>
       <p className="notify-foot">Benachrichtigungen in der App (Glocke) stellst du unter „Mein Konto“ → „Benachrichtigungen“ ein.</p>
+    </section>
+  );
+}
+
+/* ---------- App installieren, Offline-Ansicht und Push auf diesem Gerät ---------- */
+type PushState = 'loading' | 'unsupported' | 'ios-install' | 'denied' | 'off' | 'on' | 'busy';
+const b64ToBytes = (s: string) => {
+  const b = atob((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(b, (ch) => ch.charCodeAt(0));
+};
+
+function AppSection() {
+  const { f, run, toast } = useApp();
+  const pwa = usePwaInstall();
+  const [push, setPush] = useState<PushState>('loading');
+  const [saved, setSaved] = useState<number | null>(null);
+  const supported = () => typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+  useEffect(() => {
+    setSaved(offlineSavedAt());
+    if (!supported()) {
+      setPush(pwa.ios && !pwa.installed ? 'ios-install' : 'unsupported');
+      return;
+    }
+    if (Notification.permission === 'denied') {
+      setPush('denied');
+      return;
+    }
+    let alive = true;
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => alive && setPush(sub ? 'on' : 'off'))
+      .catch(() => alive && setPush('unsupported'));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const enable = async () => {
+    setPush('busy');
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') {
+        setPush(perm === 'denied' ? 'denied' : 'off');
+        return toast('Ohne Erlaubnis kann DienstPlan keine Benachrichtigungen anzeigen.');
+      }
+      const k = await run(getPushKey(), { silent: true });
+      if (!k.ok || !k.data) return setPush('off');
+      const reg = await navigator.serviceWorker.ready;
+      const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(k.data.key) }));
+      const res = await run(savePushSubscription(sub.toJSON() as never));
+      setPush(res.ok ? 'on' : 'off');
+    } catch {
+      setPush('off');
+      toast('Push konnte auf diesem Gerät nicht aktiviert werden.');
+    }
+  };
+  const disable = async () => {
+    setPush('busy');
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await run(removePushSubscription(sub.endpoint));
+        await sub.unsubscribe();
+      }
+    } finally {
+      setPush('off');
+    }
+  };
+
+  const pushSub: Record<PushState, string> = {
+    loading: 'Wird geprüft …',
+    busy: 'Einen Moment …',
+    on: 'Aktiv – neue Einteilungen, Änderungen und Tauschanfragen erscheinen als Mitteilung auf diesem Gerät.',
+    off: 'Mitteilungen auf diesem Gerät erhalten, auch wenn DienstPlan geschlossen ist.',
+    denied: 'Mitteilungen sind für diese Seite blockiert – bitte in den Browser- bzw. Systemeinstellungen erlauben.',
+    'ios-install': 'Auf dem iPhone/iPad zuerst DienstPlan zum Home-Bildschirm hinzufügen und von dort öffnen.',
+    unsupported: 'Dieser Browser unterstützt keine Push-Mitteilungen.',
+  };
+
+  return (
+    <section className="settings-card" id="set-app">
+      <h2>App & Push</h2>
+      <Row
+        title="Als App installieren"
+        sub={
+          pwa.installed
+            ? 'DienstPlan läuft bereits als installierte App.'
+            : pwa.canPrompt
+              ? 'Mit eigenem Symbol am Home-Bildschirm bzw. im Dock – startet ohne Browserleiste.'
+              : pwa.ios
+                ? 'In Safari auf „Teilen“ tippen und „Zum Home-Bildschirm“ wählen.'
+                : 'Im Browser-Menü „App installieren“ bzw. „Zum Startbildschirm hinzufügen“ wählen.'
+        }
+      >
+        {pwa.installed ? (
+          <span className="pill teal">
+            <Icon name="check" /> Installiert
+          </span>
+        ) : pwa.canPrompt ? (
+          <button type="button" className="btn primary small" onClick={async () => (await pwa.install()) && toast('DienstPlan wurde installiert.')}>
+            <Icon name="download" />
+            Installieren
+          </button>
+        ) : null}
+      </Row>
+      <Row title="Offline-Ansicht" sub={saved ? `Dein Plan (90 Tage voraus) ist auf diesem Gerät gespeichert · Stand ${f.fmtIsoDate(new Date(saved).toISOString().slice(0, 10))}, ${new Date(saved).toLocaleTimeString('de-AT', { hour: '2-digit', minute: '2-digit' })}` : 'Wird beim nächsten Öffnen mit Internet gespeichert.'}>
+        <span className={`pill ${saved ? 'teal' : ''}`}>{saved ? 'Bereit' : 'Noch nicht'}</span>
+      </Row>
+      <Row title="Push-Mitteilungen auf diesem Gerät" sub={pushSub[push as PushState]}>
+        <Toggle on={push === 'on'} disabled={!['on', 'off'].includes(push)} label="Push-Mitteilungen auf diesem Gerät" onChange={(v) => (v ? enable() : disable())} />
+      </Row>
+      {push === 'on' && (
+        <div className="app-push-test">
+          <button type="button" className="btn small" onClick={() => run(sendTestPush())}>
+            <Icon name="bell" />
+            Testnachricht senden
+          </button>
+        </div>
+      )}
+      <p className="notify-foot">Push gilt je Gerät und Browser. Welche Ereignisse du bekommst, richtet sich nach deinen Glocken-Einstellungen unter „Mein Konto“ → „Benachrichtigungen“.</p>
     </section>
   );
 }
