@@ -198,27 +198,6 @@ export function Reports() {
           </div>
         </div>
       </div>
-      <section className="panel report-templates">
-        <div className="panel-head">
-          <h2>Berichtsvorlagen</h2>
-          <small className="muted">Vorlagen verwenden den oben gewählten Zeitraum und Filter.</small>
-        </div>
-        <div className="stats template-grid">
-          {reports
-            .filter((r) => r.template)
-            .map((r) => (
-              <button key={r.id} type="button" className="panel template-card" onClick={() => setExp({ rep: r.id })}>
-                <span className="stat-icon">
-                  <Icon name={r.icon} />
-                </span>
-                <span>
-                  <b>{r.title}</b>
-                  <small>{r.sub}</small>
-                </span>
-              </button>
-            ))}
-        </div>
-      </section>
       <div className="split-layout no-side">
         <section className="panel flush">
           <div className="panel-toolbar">
