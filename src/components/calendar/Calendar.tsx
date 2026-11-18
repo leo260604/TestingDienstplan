@@ -281,6 +281,35 @@ export function Calendar({ area }: { area: Area }) {
     if (noteSelfShown) return items.some((a) => a.kind !== 'Bereitschaft' && a.employee === noteSelf) ? null : noteAddField(date, noteSelf, cls);
     return items.some((a) => a.kind !== 'Bereitschaft') ? null : noteAddField(date, '', cls);
   };
+  /* Monatsansicht: kompakte Schaltflächen für Teamnotiz und eigene Notiz (erscheinen beim Darüberfahren) */
+  const ownNoteTarget = (date: string): string | null => {
+    if (!isDuty || onlyConflicts || day(date).getDay() === 6) return null;
+    const items = byDate[date] || [];
+    if (noteSelfShown) return items.some((a) => a.kind !== 'Bereitschaft' && a.employee === noteSelf) || !canNoteFor(ctx, noteSelf) ? null : noteSelf;
+    return items.some((a) => a.kind !== 'Bereitschaft') || !data.staff.some((p) => canNoteFor(ctx, p.name)) ? null : '';
+  };
+  const monthAdd = (date: string) => {
+    if (!isDuty || onlyConflicts) return null;
+    const emp = ownNoteTarget(date);
+    const canTn = teamNoteTeams(ctx).some((t) => tnShown.has(t)) && !data.teamNotes.some((x) => x.date === date && tnShown.has(x.team));
+    if (emp === null && !canTn) return null;
+    return (
+      <div className="month-add">
+        {canTn && (
+          <button type="button" className="month-add-btn" title="Teamnotiz hinzufügen" onClick={(e) => { e.stopPropagation(); setDlg({ t: 'teamNote', date }); }}>
+            <Icon name="chat" />
+            <span>Teamnotiz</span>
+          </button>
+        )}
+        {emp !== null && (
+          <button type="button" className="month-add-btn" title="Notiz hinzufügen" onClick={(e) => { e.stopPropagation(); setDlg({ t: 'note', date, forWho: emp || undefined }); }}>
+            <Icon name="plus" />
+            <span>Notiz</span>
+          </button>
+        )}
+      </div>
+    );
+  };
   const noteChip = (a: Entry) => {
     const k = noteKey(a);
     if (!isDuty || noteHost[k] !== a) return null;
@@ -634,6 +663,7 @@ export function Calendar({ area }: { area: Area }) {
               {holTag(date, 'hol-month')}
               {data.teamNotes.some((x) => x.date === date && tnShown.has(x.team)) && tnHead(date, 'tn-month')}
               {dayStack(date)}
+              {monthAdd(date)}
             </div>
           ))}
         </div>
@@ -680,7 +710,10 @@ export function Calendar({ area }: { area: Area }) {
             {tnHead(selected, 'tn-mobile')}
             {bdays(selected)}
             {underBanner(selected)}
-            <div className="mobile-agenda-list">{dayEntries(selected).length ? dayEntries(selected).map((a) => agendaCard(a)) : <div className="mobile-agenda-empty">Keine Einträge für diesen Tag.</div>}</div>
+            <div className="mobile-agenda-list">
+              {dayEntries(selected).length ? dayEntries(selected).map((a) => agendaCard(a)) : <div className="mobile-agenda-empty">Keine Einträge für diesen Tag.</div>}
+              {ownNoteField(selected, 'agenda-note-add')}
+            </div>
           </div>
         </div>
       </>
