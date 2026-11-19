@@ -585,7 +585,7 @@ export function Calendar({ area }: { area: Area }) {
     const selected = mobileDate && dates.includes(mobileDate) ? mobileDate : dates.includes(isoDate(cur)) ? isoDate(cur) : dates[0];
     body = (
       <>
-        <div className="week-grid compact-week cal-cols mobile-hide-calendar" style={{ '--cols': n } as CSSProperties}>
+        <div key="week-grid" className="week-grid compact-week cal-cols mobile-hide-calendar" style={{ '--cols': n } as CSSProperties}>
           {dates.map((date, i) => (
             <div key={'h' + date} className={`day-head ${date === today ? 'today' : ''}${holCls(date)}`}>
               {W[i]}
@@ -646,7 +646,7 @@ export function Calendar({ area }: { area: Area }) {
     const selected = mobileDate && mobileDate.startsWith(monthKey) ? mobileDate : isoDate(cur);
     body = (
       <>
-        <div className="month-grid cal-cols mobile-hide-calendar" style={{ '--cols': n } as CSSProperties}>
+        <div key="month-grid" className="month-grid cal-cols mobile-hide-calendar" style={{ '--cols': n } as CSSProperties}>
           {W.slice(0, n).map((x) => (
             <div className="month-head" key={x}>
               {x}
@@ -848,11 +848,12 @@ export function Calendar({ area }: { area: Area }) {
     const card = cardRef.current;
     const body = document.body;
     const grid = card?.querySelector<HTMLElement>('.month-grid');
-    if (grid) {
-      grid.style.gridTemplateRows = '';
-      grid.style.gridAutoRows = '';
-      grid.style.flex = '';
-    }
+    // Zeilenhöhen einer vorherigen Ansicht entfernen (sonst übernimmt z. B. die Woche die Zeilen des Monats)
+    card?.querySelectorAll<HTMLElement>('.calendar-scroll > .month-grid, .calendar-scroll > .week-grid').forEach((g) => {
+      g.style.gridTemplateRows = '';
+      g.style.gridAutoRows = '';
+      g.style.flex = '';
+    });
     if (card) {
       card.style.height = '';
       card.style.minHeight = '';
