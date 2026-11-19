@@ -177,6 +177,8 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
     type P = { name: string; pref: number; away: boolean };
     const likes = (x: P, k: number) => !!favIdx.get(x.name)?.includes(k);
     const hasFav = (x: P) => favIdx.has(x.name);
+    /** Dienst, den sich jemand anderes wünscht – wer ihn nicht selbst wünscht, soll ihn möglichst nicht bekommen */
+    const othersLike = (x: P, k: number) => [...favIdx.entries()].some(([n, ks]) => n !== x.name && ks.includes(k));
     dates.forEach((date) => {
       const p = period(date),
         n = shifts.length,
@@ -243,11 +245,19 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
         rot.forEach((x) => {
           if (asg.has(x)) return;
           let k = x.pref;
+          // Rotationsdienst ist der Wunschdienst eines anderen → lieber ein Dienst, den sich niemand wünscht
+          if (!likes(x, k) && othersLike(x, k)) {
+            const free = shifts
+              .map((_, j) => j)
+              .filter((j) => cap(j) === Infinity && fits(x.name, shifts[j]) && !othersLike(x, j))
+              .sort((a, b) => counts[a] - counts[b])[0];
+            if (free !== undefined) k = free;
+          }
           if (!(counts[k] < cap(k) && fits(x.name, shifts[k]))) {
             const alt = shifts
               .map((_, j) => j)
               .filter((j) => cap(j) === Infinity && fits(x.name, shifts[j]))
-              .sort((a, b) => Number(likes(x, b)) - Number(likes(x, a)) || counts[a] - counts[b])[0];
+              .sort((a, b) => Number(likes(x, b)) - Number(likes(x, a)) || Number(othersLike(x, a)) - Number(othersLike(x, b)) || counts[a] - counts[b])[0];
             if (alt === undefined) {
               free++;
               return;
@@ -267,7 +277,7 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
           });
           if (counts[hi] - counts[lo] <= 1) break;
           // Wer seinen Wunschdienst hat, wird beim Ausgleichen nicht verschoben
-          const cands = rot.filter((x) => asg.get(x) === hi && fits(x.name, shifts[lo]) && (!likes(x, hi) || likes(x, lo)));
+          const cands = rot.filter((x) => asg.get(x) === hi && fits(x.name, shifts[lo]) && (!likes(x, hi) || likes(x, lo)) && (likes(x, lo) || !othersLike(x, lo)));
           if (!cands.length) break;
           const c = cands[((p % cands.length) + cands.length) % cands.length];
           asg.set(c, lo);

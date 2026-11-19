@@ -640,7 +640,7 @@ export function DutyRotationDialog({ current, preTeams, onClose }: { current: Da
       />
       <RotationPeople
         title={<>Wunschdienste je Person {favCount ? <span className="pill teal">{favCount} festgelegt</span> : <span className="muted">(optional)</span>}</>}
-        note="Markierte Dienste bekommt die Person bevorzugt. Jeder Dienst wird trotzdem täglich besetzt; wünschen sich mehrere denselben Einzeldienst, wechseln sie sich ab."
+        note="Markierte Dienste bekommt die Person bevorzugt; Wunschdienste anderer bekommt sie möglichst nicht. Jeder Dienst wird trotzdem täglich besetzt – fällt jemand aus, springt eine andere Person ein."
         collapsible
         teams={teams}
         render={(tn) => {
@@ -649,7 +649,21 @@ export function DutyRotationDialog({ current, preTeams, onClose }: { current: Da
           const tShifts = data.shiftTypes.filter((s) => s.team === tn && shifts.includes(s.name));
           if (!tShifts.length) return <small className="muted">Keine Dienste für dieses Team ausgewählt.</small>;
           const f = favs[tn] || {};
-          return rotationMembers(t, data.staff).map((p) => (
+          const people = rotationMembers(t, data.staff);
+          // Hinweis: Einzeldienst (1×/Tag) von mehreren gewünscht → sie wechseln sich ab
+          const crowded = tShifts
+            .filter((sh) => !shiftMulti(sh))
+            .map((sh) => ({ sh, who: people.filter((p) => (f[p.id] || []).includes(sh.name)).map((p) => p.name.split(' ')[0]) }))
+            .filter((x) => x.who.length > 1);
+          const hint = crowded.length ? (
+            <small key="hint" className="wp-note rot-fav-hint">
+              <Icon name="alert" />
+              <span>
+                {crowded.map((x) => `${x.sh.name} gibt es nur 1× pro Tag – ${x.who.join(', ').replace(/, ([^,]*)$/, ' und $1')} wechseln sich ab`).join(' · ')}. Wer gerade nicht dran ist, bekommt einen Dienst, den sich niemand wünscht.
+              </span>
+            </small>
+          ) : null;
+          return [hint, ...people.map((p) => (
             <div key={p.id} className="rot-fav-row">
               <span className="rot-fav-name">
                 <Avatar name={p.name} size={20} />
@@ -678,7 +692,7 @@ export function DutyRotationDialog({ current, preTeams, onClose }: { current: Da
                 })}
               </span>
             </div>
-          ));
+          ))];
         }}
         dirty={teams.some(favChanged)}
         onSave={() => saveFav(teams.filter(favChanged))}

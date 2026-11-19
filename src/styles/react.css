@@ -213,3 +213,5 @@ tr.sb-row-edit:focus-visible{outline:2px solid var(--accent-color);outline-offse
 .rot-chip.person small{font-size:10.5px;font-weight:600;color:var(--muted)}
 .rot-people-save{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-top:2px}
 @media(max-width:600px){.rot-fav-row{flex-direction:column;align-items:flex-start}.rot-fav-chips{justify-content:flex-start}.rot-fav-name{min-width:0}}
+.rot-fav-hint{display:flex;gap:7px;align-items:flex-start;width:100%;line-height:1.45}
+.rot-fav-hint .ic{width:13px;height:13px;flex:none;margin-top:2px;color:#d69b38}
