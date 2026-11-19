@@ -246,7 +246,7 @@ export function Calendar({ area }: { area: Area }) {
     return (
       <div className={`tn-wrap ${cls}`}>
         {list.slice(0, 2).map((x) => (
-          <button key={x.id} type="button" className="tn-chip" title={`${x.team}: ${x.text}${x.author ? ' – von ' + x.author : ''}`} onClick={() => setDlg({ t: 'teamNotes', date })}>
+          <button key={x.id} type="button" className="tn-chip" data-tip={`Teamnotiz · ${x.team}${x.author ? ' · von ' + x.author : ''}`} aria-label={`Teamnotiz ${x.team}: ${x.text}`} onClick={() => setDlg({ t: 'teamNotes', date })}>
             <Icon name="chat" />
             <span>{x.text}</span>
           </button>
@@ -257,7 +257,7 @@ export function Calendar({ area }: { area: Area }) {
           </button>
         )}
         {!list.length && can && (
-          <button type="button" className="tn-add" onClick={() => setDlg({ t: 'teamNote', date })}>
+          <button type="button" className="tn-add" data-tip="Teamnotiz hinzufügen (für das ganze Team)" onClick={() => setDlg({ t: 'teamNote', date })}>
             <Icon name="plus" />
             <span>Teamnotiz</span>
           </button>
@@ -267,7 +267,7 @@ export function Calendar({ area }: { area: Area }) {
   };
   const noteAddField = (date: string, emp = '', cls = '') =>
     isDuty && !onlyConflicts && day(date).getDay() !== 6 && (emp ? canNoteFor(ctx, emp) : data.staff.some((p) => canNoteFor(ctx, p.name))) ? (
-      <button type="button" className={`note-add-field ${cls}`} onClick={() => setDlg({ t: 'note', date, forWho: emp || undefined })}>
+      <button type="button" className={`note-add-field ${cls}`} data-tip="Eigene Notiz hinzufügen (zu einem Dienst)" onClick={() => setDlg({ t: 'note', date, forWho: emp || undefined })}>
         <Icon name="plus" />
         <span>Notiz hinzufügen</span>
       </button>
@@ -296,13 +296,13 @@ export function Calendar({ area }: { area: Area }) {
     return (
       <div className="month-add">
         {canTn && (
-          <button type="button" className="month-add-btn" title="Teamnotiz hinzufügen" onClick={(e) => { e.stopPropagation(); setDlg({ t: 'teamNote', date }); }}>
+          <button type="button" className="month-add-btn" data-tip="Teamnotiz hinzufügen (für das ganze Team)" aria-label="Teamnotiz hinzufügen" onClick={(e) => { e.stopPropagation(); setDlg({ t: 'teamNote', date }); }}>
             <Icon name="chat" />
             <span>Teamnotiz</span>
           </button>
         )}
         {emp !== null && (
-          <button type="button" className="month-add-btn" title="Notiz hinzufügen" onClick={(e) => { e.stopPropagation(); setDlg({ t: 'note', date, forWho: emp || undefined }); }}>
+          <button type="button" className="month-add-btn" data-tip="Eigene Notiz hinzufügen (zu einem Dienst)" aria-label="Notiz hinzufügen" onClick={(e) => { e.stopPropagation(); setDlg({ t: 'note', date, forWho: emp || undefined }); }}>
             <Icon name="plus" />
             <span>Notiz</span>
           </button>
@@ -315,7 +315,7 @@ export function Calendar({ area }: { area: Area }) {
     if (!isDuty || noteHost[k] !== a) return null;
     const cnt = notesBy[k].length;
     return (
-      <button type="button" className="note-chip" data-notes-open={k} aria-label={`${cnt > 1 ? cnt + ' Notizen' : 'Notiz'} anzeigen`} onClick={(e) => { e.stopPropagation(); setDlg({ t: 'notes', k }); }}>
+      <button type="button" className="note-chip" data-tip={cnt > 1 ? `${cnt} Notizen (keine Teamnotiz)` : 'Notiz (keine Teamnotiz)'} data-notes-open={k} aria-label={`${cnt > 1 ? cnt + ' Notizen' : 'Notiz'} anzeigen`} onClick={(e) => { e.stopPropagation(); setDlg({ t: 'notes', k }); }}>
         <Icon name="chat" />
         {cnt > 1 && <span>{cnt}</span>}
       </button>
@@ -1130,6 +1130,7 @@ export function Calendar({ area }: { area: Area }) {
 
       {dlg?.t === 'duty' && <DutyDialog area={area} preset={dlg.preset} onClose={() => setDlg(null)} />}
       {dlg?.t === 'absence' && <AbsenceDialog onClose={() => setDlg(null)} />}
+      <HoverTip />
       {dlg?.t === 'workplace' && <WorkplaceDialog preset={dlg.preset} onClose={() => setDlg(null)} />}
       {dlg?.t === 'rotStandby' && <StandbyRotationDialog current={cur} preTeams={calTeams} onClose={() => setDlg(null)} />}
       {dlg?.t === 'rotDuty' && <DutyRotationDialog current={cur} preTeams={calTeams} onClose={() => setDlg(null)} />}
@@ -1719,3 +1720,32 @@ function StandbyContact({ id, onClose }: { id: string; onClose: () => void }) {
   );
 }
 
+
+/* Sofort erscheinende Beschriftung für Elemente mit data-tip (fixiert, wird nicht von Zellen abgeschnitten) */
+function HoverTip() {
+  const [tip, setTip] = useState<{ text: string; x: number; y: number; below: boolean } | null>(null);
+  useEffect(() => {
+    const over = (e: MouseEvent) => {
+      const el = (e.target as HTMLElement | null)?.closest?.('[data-tip]') as HTMLElement | null;
+      if (!el) return setTip(null);
+      const r = el.getBoundingClientRect();
+      const below = r.top < 44;
+      setTip({ text: el.dataset.tip || '', x: Math.min(Math.max(r.left + r.width / 2, 90), window.innerWidth - 90), y: below ? r.bottom + 6 : r.top - 6, below });
+    };
+    const hide = () => setTip(null);
+    document.addEventListener('mouseover', over);
+    window.addEventListener('scroll', hide, true);
+    document.addEventListener('pointerdown', hide);
+    return () => {
+      document.removeEventListener('mouseover', over);
+      window.removeEventListener('scroll', hide, true);
+      document.removeEventListener('pointerdown', hide);
+    };
+  }, []);
+  if (!tip || !tip.text) return null;
+  return (
+    <div className={`dp-hover-tip ${tip.below ? 'below' : ''}`} role="tooltip" style={{ left: tip.x, top: tip.y }}>
+      {tip.text}
+    </div>
+  );
+}
