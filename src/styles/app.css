@@ -3089,9 +3089,13 @@ body.dark-mode .wn-ic.wn-verbessert,body.dark-mode .wn-tag.wn-verbessert{color:#
 }
 /* Monatsansicht: Teamnotiz / eigene Notiz hinzufügen (beim Darüberfahren) */
 .month-cell{position:relative}
-.month-add{position:absolute;left:6px;right:6px;bottom:5px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;opacity:0;pointer-events:none;transition:opacity .15s;z-index:2}
-.month-cell:hover .month-add,.month-add:focus-within{opacity:1;pointer-events:auto}
-@media (hover:none){.month-add{opacity:.85;pointer-events:auto}}
+.month-add{position:absolute;left:auto;right:6px;bottom:5px;max-width:calc(100% - 12px);display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;opacity:0;pointer-events:none;transition:opacity .15s;z-index:2}
+.month-add-btn{pointer-events:none}
+.month-cell:hover .month-add,.month-add:focus-within{opacity:1}
+.month-cell:hover .month-add-btn,.month-add:focus-within .month-add-btn{pointer-events:auto}
+@media (hover:none){.month-add{opacity:.85}.month-add-btn{pointer-events:auto}}
+/* „+ x weitere“ bleibt immer klickbar – liegt über den Notiz-Schaltflächen */
+.month-cell .calendar-more{position:relative;z-index:3}
 .month-add-btn{display:inline-flex;align-items:center;gap:3px;min-width:0;padding:2px 8px;border:1px dashed color-mix(in srgb,var(--muted) 50%,var(--line));border-radius:999px;background:var(--surface);color:var(--muted);font:inherit;font-size:10.5px;font-weight:650;line-height:1.6;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .month-add-btn svg{width:11px;height:11px;flex:none}
 .month-add-btn:hover,.month-add-btn:focus-visible{border-color:#e0a800;color:#9a7300;background:color-mix(in srgb,#ffd84d 14%,var(--surface));outline:none}
