@@ -257,7 +257,7 @@ export function Calendar({ area }: { area: Area }) {
           </button>
         )}
         {!list.length && can && (
-          <button type="button" className="tn-add" data-tip="Teamnotiz hinzufügen (für das ganze Team)" onClick={() => setDlg({ t: 'teamNote', date })}>
+          <button type="button" className="tn-add" data-tip="Teamnotiz hinzufügen" onClick={() => setDlg({ t: 'teamNote', date })}>
             <Icon name="plus" />
             <span>Teamnotiz</span>
           </button>
@@ -267,7 +267,7 @@ export function Calendar({ area }: { area: Area }) {
   };
   const noteAddField = (date: string, emp = '', cls = '') =>
     isDuty && !onlyConflicts && day(date).getDay() !== 6 && (emp ? canNoteFor(ctx, emp) : data.staff.some((p) => canNoteFor(ctx, p.name))) ? (
-      <button type="button" className={`note-add-field ${cls}`} data-tip="Eigene Notiz hinzufügen (zu einem Dienst)" onClick={() => setDlg({ t: 'note', date, forWho: emp || undefined })}>
+      <button type="button" className={`note-add-field ${cls}`} data-tip="Eigene Notiz hinzufügen" onClick={() => setDlg({ t: 'note', date, forWho: emp || undefined })}>
         <Icon name="plus" />
         <span>Notiz hinzufügen</span>
       </button>
@@ -296,13 +296,13 @@ export function Calendar({ area }: { area: Area }) {
     return (
       <div className="month-add">
         {canTn && (
-          <button type="button" className="month-add-btn" data-tip="Teamnotiz hinzufügen (für das ganze Team)" aria-label="Teamnotiz hinzufügen" onClick={(e) => { e.stopPropagation(); setDlg({ t: 'teamNote', date }); }}>
+          <button type="button" className="month-add-btn" data-tip="Teamnotiz hinzufügen" aria-label="Teamnotiz hinzufügen" onClick={(e) => { e.stopPropagation(); setDlg({ t: 'teamNote', date }); }}>
             <Icon name="chat" />
             <span>Teamnotiz</span>
           </button>
         )}
         {emp !== null && (
-          <button type="button" className="month-add-btn" data-tip="Eigene Notiz hinzufügen (zu einem Dienst)" aria-label="Notiz hinzufügen" onClick={(e) => { e.stopPropagation(); setDlg({ t: 'note', date, forWho: emp || undefined }); }}>
+          <button type="button" className="month-add-btn" data-tip="Eigene Notiz hinzufügen" aria-label="Notiz hinzufügen" onClick={(e) => { e.stopPropagation(); setDlg({ t: 'note', date, forWho: emp || undefined }); }}>
             <Icon name="plus" />
             <span>Notiz</span>
           </button>
