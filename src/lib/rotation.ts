@@ -90,7 +90,7 @@ const ANCHOR = Date.UTC(2024, 0, 1);
 
 export interface DutyRotationInput {
   entries: Entry[];
-  /** favorites: Wunschdienste je Person (Name → Dienstnamen) – werden bevorzugt zugeteilt */
+  /** favorites: ausgewählte Dienste je Person (Name → Dienstnamen) – wer eine Auswahl hat, bekommt NUR diese Dienste */
   teams: { name: string; members: string[]; shifts: ShiftType[]; favorites?: Record<string, string[]> }[];
   from: string;
   to: string;
@@ -104,7 +104,7 @@ export interface DutyRotationResult {
   entries: Entry[];
   created: Entry[];
   removed: string[];
-  stats: { absent: number; moved: number; unfilled: number; dayFree: number; shortRest: number; noShift: string[]; wished: number; wishedOf: number };
+  stats: { absent: number; moved: number; unfilled: number; dayFree: number; shortRest: number; noShift: string[]; wished: number; wishedOf: number; unfilledShifts: Record<string, number> };
 }
 
 /** Faires Muster: Zyklus so lang wie das Team; Einzeldienste genau einmal im Zyklus,
@@ -143,7 +143,7 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
   const removed = inp.keep ? [] : inp.entries.filter(inRange).map((a) => a.id);
   const entries = inp.keep ? inp.entries.slice() : inp.entries.filter((a) => !inRange(a));
   const created: Entry[] = [];
-  const stats = { absent: 0, moved: 0, unfilled: 0, dayFree: 0, shortRest: 0, noShift: [] as string[], wished: 0, wishedOf: 0 };
+  const stats = { absent: 0, moved: 0, unfilled: 0, dayFree: 0, shortRest: 0, noShift: [] as string[], wished: 0, wishedOf: 0, unfilledShifts: {} as Record<string, number> };
 
   const dates: string[] = [];
   for (let c = day(inp.from); isoDate(c) <= inp.to; c = addDays(c, 1)) {
@@ -179,6 +179,8 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
     const hasFav = (x: P) => favIdx.has(x.name);
     /** Dienst, den sich jemand anderes wünscht – wer ihn nicht selbst wünscht, soll ihn möglichst nicht bekommen */
     const othersLike = (x: P, k: number) => [...favIdx.entries()].some(([n, ks]) => n !== x.name && ks.includes(k));
+    /** Darf die Person diesen Dienst bekommen? Mit Auswahl nur die ausgewählten Dienste, ohne Auswahl alle */
+    const allowed = (name: string, k: number) => !favIdx.has(name) || favIdx.get(name)!.includes(k);
     dates.forEach((date) => {
       const p = period(date),
         n = shifts.length,
@@ -219,9 +221,10 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
         const rot = [...list.slice(off), ...list.slice(0, off)];
         let unf = 0,
           free = 0;
+        const unfK: number[] = [];
         for (let k = 0; k < n; k++) {
           if (counts[k] > 0) continue;
-          const open = rot.filter((x) => !asg.has(x) && fits(x.name, shifts[k]));
+          const open = rot.filter((x) => !asg.has(x) && allowed(x.name, k) && fits(x.name, shifts[k]));
           /* Reihenfolge: wer den Dienst wünscht → wer laut Rotation dran ist → andere ohne Wünsche
              (zuerst die, deren Rotationsdienst ohnehin mehrfach vergeben ist) → zuletzt wer sich etwas anderes wünscht */
           const rank = (x: P) => (likes(x, k) ? (x.pref === k ? 0 : 1) : hasFav(x) ? 4 : x.pref === k ? 2 : 3);
@@ -237,6 +240,7 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
           }
           if (!c) {
             unf++;
+            unfK.push(k);
             continue;
           }
           asg.set(c, k);
@@ -249,14 +253,15 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
           if (!likes(x, k) && othersLike(x, k)) {
             const free = shifts
               .map((_, j) => j)
-              .filter((j) => cap(j) === Infinity && fits(x.name, shifts[j]) && !othersLike(x, j))
+              .filter((j) => cap(j) === Infinity && allowed(x.name, j) && fits(x.name, shifts[j]) && !othersLike(x, j))
               .sort((a, b) => counts[a] - counts[b])[0];
             if (free !== undefined) k = free;
           }
-          if (!(counts[k] < cap(k) && fits(x.name, shifts[k]))) {
+          if (!(counts[k] < cap(k) && allowed(x.name, k) && fits(x.name, shifts[k]))) {
+            // Ausweichen nur auf Dienste, die die Person bekommen darf – sonst an diesem Tag dienstfrei
             const alt = shifts
               .map((_, j) => j)
-              .filter((j) => cap(j) === Infinity && fits(x.name, shifts[j]))
+              .filter((j) => cap(j) === Infinity && allowed(x.name, j) && fits(x.name, shifts[j]))
               .sort((a, b) => Number(likes(x, b)) - Number(likes(x, a)) || Number(othersLike(x, a)) - Number(othersLike(x, b)) || counts[a] - counts[b])[0];
             if (alt === undefined) {
               free++;
@@ -277,18 +282,19 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
           });
           if (counts[hi] - counts[lo] <= 1) break;
           // Wer seinen Wunschdienst hat, wird beim Ausgleichen nicht verschoben
-          const cands = rot.filter((x) => asg.get(x) === hi && fits(x.name, shifts[lo]) && (!likes(x, hi) || likes(x, lo)) && (likes(x, lo) || !othersLike(x, lo)));
+          const cands = rot.filter((x) => asg.get(x) === hi && allowed(x.name, lo) && fits(x.name, shifts[lo]) && (!likes(x, hi) || likes(x, lo)) && (likes(x, lo) || !othersLike(x, lo)));
           if (!cands.length) break;
           const c = cands[((p % cands.length) + cands.length) % cands.length];
           asg.set(c, lo);
           counts[hi]--;
           counts[lo]++;
         }
-        return { asg, unf, free };
+        return { asg, unf, free, unfK };
       };
       const present = people.filter((x) => !x.away),
         result = planDay(present);
       stats.unfilled += result.unf;
+      result.unfK.forEach((k) => (stats.unfilledShifts[shifts[k].name] = (stats.unfilledShifts[shifts[k].name] || 0) + 1));
       stats.dayFree += result.free;
       if (dayAbsent) {
         const base = planDay(people).asg;
@@ -309,6 +315,8 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
             (y) =>
               y !== x &&
               y.k !== x.k &&
+              allowed(x.name, y.k) &&
+              allowed(y.name, x.k) &&
               !restShort(x.name, shifts[y.k]) &&
               !restShort(y.name, shifts[x.k]) &&
               fits(x.name, shifts[y.k]) &&

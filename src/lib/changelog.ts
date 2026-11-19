@@ -11,9 +11,9 @@ export const CHANGELOG: Release[] = [
   {
     v: '2026.11.19',
     date: '19.11.2026',
-    title: 'Rotation mit Wunschdiensten',
+    title: 'Rotation: Dienste je Person',
     items: [
-      ['neu', 'Dienstplan', 'Wunschdienste in der Rotation', 'Teamleitungen legen je Person bevorzugte Dienste fest – „Rotation automatisch planen“ teilt sie bevorzugt zu.'],
+      ['neu', 'Dienstplan', 'Dienste je Person in der Rotation', 'Teamleitungen legen je Person fest, welche Dienste sie bekommt – „Rotation automatisch planen“ teilt nur diese zu.'],
       ['neu', 'Bereitschaft', 'Wer macht Bereitschaft?', 'Je Team festlegen, wer bei der Bereitschafts-Rotation eingeteilt wird.'],
     ],
   },

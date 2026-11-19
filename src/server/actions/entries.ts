@@ -421,13 +421,14 @@ export async function runDutyRotation(inp: { teams: string[]; shifts: string[]; 
       after: `${created.length} Dienste angelegt${s.moved ? `, ${s.moved} wegen Abwesenheit umverteilt` : ''}`,
     });
     await notifyAssignments(c, created);
-    const extra = [s.absent ? `${s.absent}× abwesend` : '', s.dayFree ? `${s.dayFree}× dienstfrei (kein passender Dienst mehr frei)` : '', s.noShift.length ? `ohne passende Dienste: ${s.noShift.join(', ')}` : '']
+    const extra = [s.absent ? `${s.absent}× abwesend` : '', s.dayFree ? `${s.dayFree}× dienstfrei (kein passender bzw. ausgewählter Dienst mehr frei)` : '', s.noShift.length ? `ohne passende Dienste: ${s.noShift.join(', ')}` : '']
       .filter(Boolean)
       .join(' · ');
-    const wish = s.wishedOf ? ` ${s.wished} von ${s.wishedOf} Diensten mit Wunschdienst entsprechen dem Wunsch.` : '';
+    const uf = Object.entries(s.unfilledShifts);
+    const wish = uf.length ? ` Unbesetzt (niemand verfügbar bzw. ausgewählt): ${uf.map(([n, c]) => `${n} ${c}×`).join(', ')}.` : '';
     return ok(
       created.length
-        ? `${created.length} Dienste wurden eingeteilt.${wish}${extra ? ' Ausgelassen: ' + extra + '.' : ''}${s.moved ? ` ${s.moved} ${s.moved === 1 ? 'Dienst wurde' : 'Dienste wurden'} wegen Abwesenheit umverteilt.` : ''}${s.unfilled ? ` Achtung: ${s.unfilled}× blieb ein Dienst unbesetzt (zu wenige Personen).` : ''}${s.shortRest ? ` Hinweis: ${s.shortRest}× weniger als 11 Std. Ruhezeit zum Vortag.` : ''}`
+        ? `${created.length} Dienste wurden eingeteilt.${wish}${extra ? ' Ausgelassen: ' + extra + '.' : ''}${s.moved ? ` ${s.moved} ${s.moved === 1 ? 'Dienst wurde' : 'Dienste wurden'} wegen Abwesenheit umverteilt.` : ''}${s.unfilled && !uf.length ? ` Achtung: ${s.unfilled}× blieb ein Dienst unbesetzt (zu wenige Personen).` : ''}${s.shortRest ? ` Hinweis: ${s.shortRest}× weniger als 11 Std. Ruhezeit zum Vortag.` : ''}`
         : `Keine freien Plätze gefunden – nichts zu tun.${extra ? ' Ausgelassen: ' + extra + '.' : ''}`,
     );
   });

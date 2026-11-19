@@ -639,8 +639,8 @@ export function DutyRotationDialog({ current, preTeams, onClose }: { current: Da
         emptyLabel="Dienste auswählen …"
       />
       <RotationPeople
-        title={<>Wunschdienste je Person {favCount ? <span className="pill teal">{favCount} festgelegt</span> : <span className="muted">(optional)</span>}</>}
-        note="Markierte Dienste bekommt die Person bevorzugt; Wunschdienste anderer bekommt sie möglichst nicht. Jeder Dienst wird trotzdem täglich besetzt – fällt jemand aus, springt eine andere Person ein."
+        title={<>Dienste je Person {favCount ? <span className="pill teal">{favCount} festgelegt</span> : <span className="muted">(optional)</span>}</>}
+        note="Ist bei einer Person etwas markiert, bekommt sie nur diese Dienste. Ohne Markierung bekommt sie alle Dienste im Wechsel. Ein Dienst, den niemand bekommen darf, bleibt unbesetzt."
         collapsible
         teams={teams}
         render={(tn) => {
@@ -650,19 +650,27 @@ export function DutyRotationDialog({ current, preTeams, onClose }: { current: Da
           if (!tShifts.length) return <small className="muted">Keine Dienste für dieses Team ausgewählt.</small>;
           const f = favs[tn] || {};
           const people = rotationMembers(t, data.staff);
-          // Hinweis: Einzeldienst (1×/Tag) von mehreren gewünscht → sie wechseln sich ab
+          // Hinweise: Einzeldienst (1×/Tag) von mehreren ausgewählt / Dienst, den niemand bekommen darf
+          const sel = (p: { id: string }) => f[p.id] || [];
           const crowded = tShifts
             .filter((sh) => !shiftMulti(sh))
-            .map((sh) => ({ sh, who: people.filter((p) => (f[p.id] || []).includes(sh.name)).map((p) => p.name.split(' ')[0]) }))
+            .map((sh) => ({ sh, who: people.filter((p) => sel(p).includes(sh.name)).map((p) => p.name.split(' ')[0]) }))
             .filter((x) => x.who.length > 1);
-          const hint = crowded.length ? (
-            <small key="hint" className="wp-note rot-fav-hint">
-              <Icon name="alert" />
-              <span>
-                {crowded.map((x) => `${x.sh.name} gibt es nur 1× pro Tag – ${x.who.join(', ').replace(/, ([^,]*)$/, ' und $1')} wechseln sich ab`).join(' · ')}. Wer gerade nicht dran ist, bekommt einen Dienst, den sich niemand wünscht.
-              </span>
-            </small>
-          ) : null;
+          const nobody = people.length && people.every((p) => sel(p).length) ? tShifts.filter((sh) => !people.some((p) => sel(p).includes(sh.name))) : [];
+          const and = (l: string[]) => l.join(', ').replace(/, ([^,]*)$/, ' und $1');
+          const hint =
+            crowded.length || nobody.length ? (
+              <small key="hint" className="wp-note rot-fav-hint">
+                <Icon name="alert" />
+                <span>
+                  {[
+                    ...crowded.map((x) => `${x.sh.name} gibt es nur 1× pro Tag – ${and(x.who)} wechseln sich ab; wer nicht dran ist und nichts anderes ausgewählt hat, hat an dem Tag keinen Dienst`),
+                    ...(nobody.length ? [`${and(nobody.map((sh) => sh.name))} hat niemand ausgewählt – ${nobody.length === 1 ? 'bleibt' : 'bleiben'} unbesetzt`] : []),
+                  ].join('. ')}
+                  .
+                </span>
+              </small>
+            ) : null;
           return [hint, ...people.map((p) => (
             <div key={p.id} className="rot-fav-row">
               <span className="rot-fav-name">
@@ -685,7 +693,7 @@ export function DutyRotationDialog({ current, preTeams, onClose }: { current: Da
                         setFavs({ ...favs, [tn]: { ...f, [p.id]: on ? cur.filter((x) => x !== sh.name) : [...cur, sh.name] } });
                       }}
                     >
-                      {on && <Icon name="star" />}
+                      {on && <Icon name="check" />}
                       {sh.name}
                     </button>
                   );
@@ -708,7 +716,7 @@ export function DutyRotationDialog({ current, preTeams, onClose }: { current: Da
           So funktioniert die Rotation
         </summary>
         <p>
-          Jedes Teammitglied bekommt an jedem Arbeitstag (Mo–Fr) einen Dienst. Wer Wunschdienste hat, bekommt bevorzugt einen davon. Die übrigen Dienste wechseln fair im Kreis: Ein Dienst, den pro Tag nur eine Person hat, kommt bei derselben Person erst wieder, wenn alle anderen im Team ihn hatten. Teamleiter werden nicht eingeteilt. Bei Urlaub, Gleittag,
+          Jedes Teammitglied bekommt an jedem Arbeitstag (Mo–Fr) einen Dienst. Ist bei „Dienste je Person“ etwas markiert, bekommt die Person nur diese Dienste. Die übrigen Dienste wechseln fair im Kreis: Ein Dienst, den pro Tag nur eine Person hat, kommt bei derselben Person erst wieder, wenn alle anderen im Team ihn hatten. Teamleiter werden nicht eingeteilt. Bei Urlaub, Gleittag,
           Sonderurlaub, Berufsschule oder „Abwesend“ bekommt die Person keinen Dienst, und die Dienste dieses Tages werden unter den Anwesenden neu verteilt. Feiertage werden ausgelassen. Tage, an denen jemand schon einen Dienst hat, bleiben unverändert.
         </p>
       </details>
@@ -742,7 +750,7 @@ function RotationPeople({
   return (
     <section className={`rot-people ${open ? 'open' : ''}`}>
       <button type="button" className="rot-people-head" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <Icon name={collapsible ? 'star' : 'users'} />
+        <Icon name={collapsible ? 'clock' : 'users'} />
         <b>{title}</b>
         <Icon name="down" className="rot-people-chev" />
       </button>
