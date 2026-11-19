@@ -9,6 +9,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    v: '2026.11.19',
+    date: '19.11.2026',
+    title: 'Rotation mit Wunschdiensten',
+    items: [
+      ['neu', 'Dienstplan', 'Wunschdienste in der Rotation', 'Teamleitungen legen je Person bevorzugte Dienste fest – „Rotation automatisch planen“ teilt sie bevorzugt zu.'],
+      ['neu', 'Bereitschaft', 'Wer macht Bereitschaft?', 'Je Team festlegen, wer bei der Bereitschafts-Rotation eingeteilt wird.'],
+    ],
+  },
+  {
     v: '2026.11.18.2',
     date: '18.11.2026',
     title: 'Mindestbesetzung, Wochenvorlagen, App & Push',

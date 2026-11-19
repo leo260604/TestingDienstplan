@@ -90,7 +90,8 @@ const ANCHOR = Date.UTC(2024, 0, 1);
 
 export interface DutyRotationInput {
   entries: Entry[];
-  teams: { name: string; members: string[]; shifts: ShiftType[] }[];
+  /** favorites: Wunschdienste je Person (Name → Dienstnamen) – werden bevorzugt zugeteilt */
+  teams: { name: string; members: string[]; shifts: ShiftType[]; favorites?: Record<string, string[]> }[];
   from: string;
   to: string;
   mode: 'week' | 'day';
@@ -103,7 +104,7 @@ export interface DutyRotationResult {
   entries: Entry[];
   created: Entry[];
   removed: string[];
-  stats: { absent: number; moved: number; unfilled: number; dayFree: number; shortRest: number; noShift: string[] };
+  stats: { absent: number; moved: number; unfilled: number; dayFree: number; shortRest: number; noShift: string[]; wished: number; wishedOf: number };
 }
 
 /** Faires Muster: Zyklus so lang wie das Team; Einzeldienste genau einmal im Zyklus,
@@ -142,7 +143,7 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
   const removed = inp.keep ? [] : inp.entries.filter(inRange).map((a) => a.id);
   const entries = inp.keep ? inp.entries.slice() : inp.entries.filter((a) => !inRange(a));
   const created: Entry[] = [];
-  const stats = { absent: 0, moved: 0, unfilled: 0, dayFree: 0, shortRest: 0, noShift: [] as string[] };
+  const stats = { absent: 0, moved: 0, unfilled: 0, dayFree: 0, shortRest: 0, noShift: [] as string[], wished: 0, wishedOf: 0 };
 
   const dates: string[] = [];
   for (let c = day(inp.from); isoDate(c) <= inp.to; c = addDays(c, 1)) {
@@ -167,7 +168,15 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
     }
     const members = t.members;
     const pattern = rotationPattern(shifts, members.length);
+    /* Wunschdienste: Index der gewünschten Dienste je Person (nur Dienste, die in dieser Rotation vorkommen) */
+    const favIdx = new Map<string, number[]>();
+    members.forEach((name) => {
+      const ks = (t.favorites?.[name] || []).map((s) => shifts.findIndex((sh) => sh.name === s)).filter((k) => k >= 0);
+      if (ks.length) favIdx.set(name, ks);
+    });
     type P = { name: string; pref: number; away: boolean };
+    const likes = (x: P, k: number) => !!favIdx.get(x.name)?.includes(k);
+    const hasFav = (x: P) => favIdx.has(x.name);
     dates.forEach((date) => {
       const p = period(date),
         n = shifts.length,
@@ -194,7 +203,10 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
           stats.absent++;
           dayAbsent++;
         }
-        people.push({ name, pref: pattern[(((i + p) % pattern.length) + pattern.length) % pattern.length], away });
+        // Mit Wunschdiensten: einer davon (bei mehreren im Wechsel), sonst das faire Rotationsmuster
+        const fav = favIdx.get(name);
+        const pref = fav ? fav[((p % fav.length) + fav.length) % fav.length] : pattern[(((i + p) % pattern.length) + pattern.length) % pattern.length];
+        people.push({ name, pref, away });
       });
       /* 1. jeder Dienst mindestens einmal, 2. Rotationsdienst bzw. mehrfach besetzbare Alternative,
          3. mehrfach besetzbare Dienste möglichst gleich stark besetzen */
@@ -208,12 +220,19 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
         for (let k = 0; k < n; k++) {
           if (counts[k] > 0) continue;
           const open = rot.filter((x) => !asg.has(x) && fits(x.name, shifts[k]));
-          const c =
-            open.find((x) => x.pref === k) ||
-            open.sort(
-              (a, b) =>
-                rot.filter((y) => !asg.has(y) && y.pref === b.pref).length - rot.filter((y) => !asg.has(y) && y.pref === a.pref).length,
-            )[0];
+          /* Reihenfolge: wer den Dienst wünscht → wer laut Rotation dran ist → andere ohne Wünsche
+             (zuerst die, deren Rotationsdienst ohnehin mehrfach vergeben ist) → zuletzt wer sich etwas anderes wünscht */
+          const rank = (x: P) => (likes(x, k) ? (x.pref === k ? 0 : 1) : hasFav(x) ? 4 : x.pref === k ? 2 : 3);
+          const spare = (x: P) => rot.filter((y) => !asg.has(y) && y.pref === x.pref).length;
+          let c = open.slice().sort((a, b) => rank(a) - rank(b) || (rank(a) === 3 ? spare(b) - spare(a) : 0))[0];
+          // Wünschen mehrere denselben Dienst, wechseln sie sich fair ab (Woche für Woche bzw. Tag für Tag)
+          if (c && rank(c) <= 1) {
+            let same = open.filter((x) => rank(x) === rank(c!)).sort((a, b) => members.indexOf(a.name) - members.indexOf(b.name));
+            // wer weniger Alternativen hat, kommt zuerst zum Zug (wer auch andere Dienste mag, bekommt dann einen davon)
+            const fewest = Math.min(...same.map((x) => favIdx.get(x.name)?.length ?? 99));
+            same = same.filter((x) => (favIdx.get(x.name)?.length ?? 99) === fewest);
+            c = same[((p % same.length) + same.length) % same.length];
+          }
           if (!c) {
             unf++;
             continue;
@@ -228,7 +247,7 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
             const alt = shifts
               .map((_, j) => j)
               .filter((j) => cap(j) === Infinity && fits(x.name, shifts[j]))
-              .sort((a, b) => counts[a] - counts[b])[0];
+              .sort((a, b) => Number(likes(x, b)) - Number(likes(x, a)) || counts[a] - counts[b])[0];
             if (alt === undefined) {
               free++;
               return;
@@ -247,7 +266,8 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
             if (counts[j] < counts[lo]) lo = j;
           });
           if (counts[hi] - counts[lo] <= 1) break;
-          const cands = rot.filter((x) => asg.get(x) === hi && fits(x.name, shifts[lo]));
+          // Wer seinen Wunschdienst hat, wird beim Ausgleichen nicht verschoben
+          const cands = rot.filter((x) => asg.get(x) === hi && fits(x.name, shifts[lo]) && (!likes(x, hi) || likes(x, lo)));
           if (!cands.length) break;
           const c = cands[((p % cands.length) + cands.length) % cands.length];
           asg.set(c, lo);
@@ -292,6 +312,10 @@ export function planDutyRotation(inp: DutyRotationInput): DutyRotationResult {
         });
       }
       plan.forEach(({ name, k }) => {
+        if (favIdx.has(name)) {
+          stats.wishedOf++;
+          if (favIdx.get(name)!.includes(k)) stats.wished++;
+        }
         const sh = shifts[k],
           [ns] = timeSpan(sh);
         const item: Entry = {

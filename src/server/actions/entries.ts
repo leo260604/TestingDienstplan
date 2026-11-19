@@ -19,8 +19,7 @@ import {
   selfEditAllowed,
   canChangeTeamNote,
   teamNoteTeams,
-  currentUserTeamNames,
-} from '@/lib/access';
+  currentUserTeamNames, standbyRotationMembers, teamSettings } from '@/lib/access';
 import { isVariableStandby, shiftHexColor, standbyDayOk, standbyDaysLabel, standbyRestricted, standbyTimeByName, standbyTimeForTeam, TIMED_ABSENCES } from '@/lib/entries';
 import { planDutyRotation, planStandbyRotation } from '@/lib/rotation';
 import type { Ctx, Entry } from '@/lib/types';
@@ -369,7 +368,7 @@ export async function runStandbyRotation(inp: { teams: string[]; timeId: string;
     if (variable && (!T.test(inp.start || '') || !T.test(inp.end || '') || inp.start === inp.end)) return fail(`${st.name} ist eine variable Bereitschaft – bitte Beginn und Ende eingeben.`);
     const res = planStandbyRotation({
       entries: c.data.entries,
-      teams: chosen.map((t) => ({ name: t.name, standbyColor: t.standbyColor, members: rotationMembers(t, c.data.staff).map((p) => p.name) })),
+      teams: chosen.map((t) => ({ name: t.name, standbyColor: t.standbyColor, members: standbyRotationMembers(t, c.data.staff).map((p) => p.name) })),
       time: st,
       group: c.data.standbyGroups.find((g) => g.id === st.groupId),
       from: inp.from,
@@ -402,6 +401,11 @@ export async function runDutyRotation(inp: { teams: string[]; shifts: string[]; 
         name: t.name,
         members: rotationMembers(t, c.data.staff).map((p) => p.name),
         shifts: inp.shifts.map((n) => c.data.shiftTypes.find((s) => s.team === t.name && s.name === n)).filter((s): s is NonNullable<typeof s> => !!s),
+        favorites: Object.fromEntries(
+          Object.entries(teamSettings(t).dutyFavorites)
+            .map(([id, list]) => [c.data.staff.find((p) => p.id === id)?.name || '', list] as const)
+            .filter(([name]) => !!name),
+        ),
       })),
       from: inp.from,
       to: inp.to,
@@ -420,9 +424,10 @@ export async function runDutyRotation(inp: { teams: string[]; shifts: string[]; 
     const extra = [s.absent ? `${s.absent}× abwesend` : '', s.dayFree ? `${s.dayFree}× dienstfrei (kein passender Dienst mehr frei)` : '', s.noShift.length ? `ohne passende Dienste: ${s.noShift.join(', ')}` : '']
       .filter(Boolean)
       .join(' · ');
+    const wish = s.wishedOf ? ` ${s.wished} von ${s.wishedOf} Diensten mit Wunschdienst entsprechen dem Wunsch.` : '';
     return ok(
       created.length
-        ? `${created.length} Dienste wurden eingeteilt.${extra ? ' Ausgelassen: ' + extra + '.' : ''}${s.moved ? ` ${s.moved} ${s.moved === 1 ? 'Dienst wurde' : 'Dienste wurden'} wegen Abwesenheit umverteilt.` : ''}${s.unfilled ? ` Achtung: ${s.unfilled}× blieb ein Dienst unbesetzt (zu wenige Personen).` : ''}${s.shortRest ? ` Hinweis: ${s.shortRest}× weniger als 11 Std. Ruhezeit zum Vortag.` : ''}`
+        ? `${created.length} Dienste wurden eingeteilt.${wish}${extra ? ' Ausgelassen: ' + extra + '.' : ''}${s.moved ? ` ${s.moved} ${s.moved === 1 ? 'Dienst wurde' : 'Dienste wurden'} wegen Abwesenheit umverteilt.` : ''}${s.unfilled ? ` Achtung: ${s.unfilled}× blieb ein Dienst unbesetzt (zu wenige Personen).` : ''}${s.shortRest ? ` Hinweis: ${s.shortRest}× weniger als 11 Std. Ruhezeit zum Vortag.` : ''}`
         : `Keine freien Plätze gefunden – nichts zu tun.${extra ? ' Ausgelassen: ' + extra + '.' : ''}`,
     );
   });
@@ -470,5 +475,38 @@ export async function restoreEntries(inp: { label: string; remove: string[]; ups
     const area = [...removeItems, ...upsert].some((e) => e.kind === 'Bereitschaft') ? 'Bereitschaft' : 'Dienstplan';
     await audit(c, 'Geändert', area, 'Rückgängig: ' + label, { title: 'Änderung rückgängig gemacht', object: label });
     return ok('Rückgängig: ' + label);
+  });
+}
+
+/* ---------------- Rotation: Wunschdienste / Bereitschaftspersonen je Team ---------------- */
+export async function saveRotationSettings(inp: { team: string; area: 'Dienstplan' | 'Bereitschaft'; dutyFavorites?: Record<string, string[]>; standbyIds?: string[] }): Promise<ActionResult> {
+  return withCtx(async (c) => {
+    const t = manageableTeams(c, inp.area).find((x) => x.name === inp.team);
+    if (!t) return fail('Für dieses Team darfst du die Rotation nicht einstellen.');
+    const st = teamSettings(t);
+    const next = { ...st };
+    const changes: string[] = [];
+    const nameOf = (id: string) => c.data.staff.find((p) => p.id === id)?.name || id;
+    if (inp.area === 'Dienstplan' && inp.dutyFavorites) {
+      const shiftNames = new Set(c.data.shiftTypes.filter((s) => s.team === t.name).map((s) => s.name));
+      const fav: Record<string, string[]> = {};
+      Object.entries(inp.dutyFavorites).forEach(([id, list]) => {
+        if (!t.memberIds.includes(id) || !Array.isArray(list)) return;
+        const l = [...new Set(list.filter((n) => typeof n === 'string' && shiftNames.has(n)))].slice(0, 20);
+        if (l.length) fav[id] = l;
+      });
+      next.dutyFavorites = fav;
+      changes.push(Object.keys(fav).length ? `Wunschdienste: ${Object.entries(fav).map(([id, l]) => `${nameOf(id)} (${l.join(', ')})`).join('; ')}` : 'Wunschdienste entfernt');
+    }
+    if (inp.area === 'Bereitschaft' && inp.standbyIds) {
+      const ids = [...new Set(inp.standbyIds.filter((id) => typeof id === 'string' && t.memberIds.includes(id)))];
+      if (!ids.length) return fail('Bitte mindestens eine Person für die Bereitschaft auswählen.');
+      next.standbyIds = ids;
+      changes.push(`Bereitschaft machen: ${ids.map(nameOf).join(', ')}`);
+    }
+    if (!changes.length || JSON.stringify(next) === JSON.stringify(st)) return ok('');
+    await prisma.team.update({ where: { id: t.id }, data: { settings: next as never } });
+    await audit(c, 'Geändert', inp.area, `${t.name}: ${changes.join(' · ')}`, { title: inp.area === 'Bereitschaft' ? 'Bereitschaftspersonen festgelegt' : 'Wunschdienste festgelegt', object: t.name });
+    return ok(inp.area === 'Bereitschaft' ? `Bereitschaftspersonen für ${t.name} gespeichert.` : `Wunschdienste für ${t.name} gespeichert.`);
   });
 }

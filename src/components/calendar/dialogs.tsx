@@ -1,6 +1,6 @@
 'use client';
 /* Eingabemasken im Kalender: Dienst/Bereitschaft, Abwesenheit, Arbeitsort, Rotation */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { useApp } from '../AppProvider';
 import { Avatar, DateRange, Field, Icon, Modal, ModalActions, MultiPick, Picker, TimeRange } from '../ui';
 import { addDays, day, daysBetween, durationHours, eachDay, isoDate, timeSpan, validDateInput, weekStart } from '@/lib/dates';
@@ -21,8 +21,8 @@ import {
   TIMED_ABSENCES,
   tRange,
 } from '@/lib/entries';
-import { absenceTeamFor, absenceTeams, canCreateAbsenceFor, entryTeams, manageableTeams, selfOnly } from '@/lib/access';
-import { createAbsence, runDutyRotation, runStandbyRotation, saveDuty, saveWorkplace } from '@/server/actions/entries';
+import { absenceTeamFor, absenceTeams, canCreateAbsenceFor, entryTeams, manageableTeams, rotationMembers, selfOnly, standbyRotationMembers, teamSettings } from '@/lib/access';
+import { createAbsence, runDutyRotation, runStandbyRotation, saveDuty, saveRotationSettings, saveWorkplace } from '@/server/actions/entries';
 import type { Entry } from '@/lib/types';
 
 const today = () => isoDate(new Date());
@@ -494,25 +494,62 @@ export function StandbyRotationDialog({ current, preTeams, onClose }: { current:
   const [ve, setVe] = useState('');
   const st = data.standbyTimes.find((x) => x.id === timeId);
   const variable = !!st && isVariableStandby(st);
+  /* Wer macht Bereitschaft – je Team, wird gespeichert und bei der Rotation berücksichtigt */
+  const savedSb = useMemo(() => Object.fromEntries(avail.map((t) => [t.name, standbyRotationMembers(t, data.staff).map((p) => p.id)])), [avail, data.staff]);
+  const [sbIds, setSbIds] = useState<Record<string, string[]>>(savedSb);
+  const sbChanged = (tn: string) => [...(sbIds[tn] || [])].sort().join() !== [...(savedSb[tn] || [])].sort().join();
+  const saveSb = async (only?: string[]) => {
+    for (const tn of only || teams) {
+      if (!sbChanged(tn)) continue;
+      const res = await run(saveRotationSettings({ team: tn, area: 'Bereitschaft', standbyIds: sbIds[tn] || [] }), { silent: !only });
+      if (!res.ok) return false;
+    }
+    return true;
+  };
   return (
     <Modal
       title="Rotation automatisch planen"
-      sub="Verteilt die Bereitschaft gleichmäßig auf alle Teammitglieder."
+      sub="Verteilt die Bereitschaft gleichmäßig auf die festgelegten Personen."
       icon="refresh"
       className="form-dialog rot-modal"
       onClose={onClose}
       onSubmit={async () => {
         if (variable && (!vs || !ve)) return toast(`${st!.name} ist eine variable Bereitschaft – bitte Beginn und Ende eingeben.`);
+        const empty = teams.find((tn) => !(sbIds[tn] || []).length);
+        if (empty) return toast(`Bitte für ${empty} mindestens eine Person auswählen, die Bereitschaft macht.`);
+        if (!(await saveSb())) return;
         const res = await run(runStandbyRotation({ teams, timeId, from, to, mode, keep, start: vs, end: ve }), { undo: 'Bereitschafts-Rotation' });
         if (res.ok) onClose();
       }}
       footer={<ModalActions onCancel={onClose} okLabel="Rotation erstellen" />}
     >
       <MultiPick label="Teams" items={avail.map((t) => ({ value: t.name, label: t.name, color: teamColor(t), small: t.memberIds.length }))} selected={teams} onChange={setTeams} allLabel="Alle meine Teams" emptyLabel="Team auswählen …" />
-      <small className="wp-note rot-lead-note">
-        <Icon name="alert" />
-        Teamleiter werden nicht eingeteilt – sie haben keine Bereitschaft.
-      </small>
+      <RotationPeople
+        title="Wer macht Bereitschaft?"
+        note="Nur ausgewählte Personen werden eingeteilt (Standard: alle außer der Teamleitung). Die Auswahl wird je Team gespeichert."
+        teams={teams}
+        render={(tn) => {
+          const t = data.teams.find((x) => x.name === tn);
+          if (!t) return null;
+          const sel = sbIds[tn] || [];
+          return data.staff
+            .filter((p) => t.memberIds.includes(p.id))
+            .map((p) => {
+              const on = sel.includes(p.id);
+              const lead = p.id === t.leaderId || p.role === 'Teamleiter';
+              return (
+                <button key={p.id} type="button" className={`rot-chip person ${on ? 'on' : ''}`} aria-pressed={on} onClick={() => setSbIds({ ...sbIds, [tn]: on ? sel.filter((x) => x !== p.id) : [...sel, p.id] })}>
+                  {on ? <Icon name="check" /> : <Avatar name={p.name} size={18} />}
+                  {p.name}
+                  {lead && <small>Teamleitung</small>}
+                </button>
+              );
+            });
+        }}
+        count={(tn) => `${(sbIds[tn] || []).length} von ${data.teams.find((x) => x.name === tn)?.memberIds.length || 0}`}
+        dirty={teams.some(sbChanged)}
+        onSave={() => saveSb(teams.filter(sbChanged))}
+      />
       <Field label="Bereitschaftszeit">
         <Picker
           value={timeId}
@@ -552,6 +589,26 @@ export function DutyRotationDialog({ current, preTeams, onClose }: { current: Da
   const [mode, setMode] = useState<'week' | 'day'>('week');
   const [keep, setKeep] = useState(true);
   const visibleShift = (n: string) => !teams.length || teams.some((t) => data.shiftTypes.some((s) => s.team === t && s.name === n));
+  /* Wunschdienste je Person – je Team gespeichert, die Rotation teilt sie bevorzugt zu */
+  const savedFav = useMemo(() => Object.fromEntries(avail.map((t) => [t.name, teamSettings(t).dutyFavorites])), [avail]);
+  const [favs, setFavs] = useState<Record<string, Record<string, string[]>>>(savedFav);
+  const norm = (o: Record<string, string[]> = {}) =>
+    JSON.stringify(
+      Object.entries(o)
+        .filter(([, l]) => l.length)
+        .map(([k, l]) => [k, [...l].sort()])
+        .sort(),
+    );
+  const favChanged = (tn: string) => norm(favs[tn]) !== norm(savedFav[tn]);
+  const saveFav = async (only?: string[]) => {
+    for (const tn of only || teams) {
+      if (!favChanged(tn)) continue;
+      const res = await run(saveRotationSettings({ team: tn, area: 'Dienstplan', dutyFavorites: favs[tn] || {} }), { silent: !only });
+      if (!res.ok) return false;
+    }
+    return true;
+  };
+  const favCount = teams.reduce((n, tn) => n + Object.values((favs[tn] || {}) as Record<string, string[]>).filter((l) => l.length).length, 0);
   return (
     <Modal
       title="Rotation automatisch planen"
@@ -562,6 +619,7 @@ export function DutyRotationDialog({ current, preTeams, onClose }: { current: Da
       onSubmit={async () => {
         const removing = keep ? 0 : data.entries.filter((a) => a.kind === 'Dienstplan' && !a.isAbsence && a.date >= from && a.date <= to && teams.includes(a.team)).length;
         if (removing && !(await ask(`${removing} bestehende Dienste im Zeitraum werden ersetzt. Fortfahren?`, 'Ersetzen'))) return;
+        if (!(await saveFav())) return;
         const res = await run(runDutyRotation({ teams, shifts: shifts.filter(visibleShift), from, to, mode, keep }), { undo: 'Dienst-Rotation' });
         if (res.ok) onClose();
       }}
@@ -580,6 +638,51 @@ export function DutyRotationDialog({ current, preTeams, onClose }: { current: Da
         allLabel="Alle Dienste"
         emptyLabel="Dienste auswählen …"
       />
+      <RotationPeople
+        title={<>Wunschdienste je Person {favCount ? <span className="pill teal">{favCount} festgelegt</span> : <span className="muted">(optional)</span>}</>}
+        note="Markierte Dienste bekommt die Person bevorzugt. Jeder Dienst wird trotzdem täglich besetzt; wünschen sich mehrere denselben Einzeldienst, wechseln sie sich ab."
+        collapsible
+        teams={teams}
+        render={(tn) => {
+          const t = data.teams.find((x) => x.name === tn);
+          if (!t) return null;
+          const tShifts = data.shiftTypes.filter((s) => s.team === tn && shifts.includes(s.name));
+          if (!tShifts.length) return <small className="muted">Keine Dienste für dieses Team ausgewählt.</small>;
+          const f = favs[tn] || {};
+          return rotationMembers(t, data.staff).map((p) => (
+            <div key={p.id} className="rot-fav-row">
+              <span className="rot-fav-name">
+                <Avatar name={p.name} size={20} />
+                {p.name}
+              </span>
+              <span className="rot-fav-chips">
+                {tShifts.map((sh) => {
+                  const on = (f[p.id] || []).includes(sh.name);
+                  return (
+                    <button
+                      key={sh.name}
+                      type="button"
+                      className={`rot-chip ${on ? 'on' : ''}`}
+                      style={{ '--c': shiftHexColor(sh.color) } as CSSProperties}
+                      aria-pressed={on}
+                      title={`${sh.name} · ${tRange(sh)}`}
+                      onClick={() => {
+                        const cur = f[p.id] || [];
+                        setFavs({ ...favs, [tn]: { ...f, [p.id]: on ? cur.filter((x) => x !== sh.name) : [...cur, sh.name] } });
+                      }}
+                    >
+                      {on && <Icon name="star" />}
+                      {sh.name}
+                    </button>
+                  );
+                })}
+              </span>
+            </div>
+          ));
+        }}
+        dirty={teams.some(favChanged)}
+        onSave={() => saveFav(teams.filter(favChanged))}
+      />
       <Field label="Zeitraum">
         <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} />
       </Field>
@@ -591,11 +694,85 @@ export function DutyRotationDialog({ current, preTeams, onClose }: { current: Da
           So funktioniert die Rotation
         </summary>
         <p>
-          Jedes Teammitglied bekommt an jedem Arbeitstag (Mo–Fr) einen Dienst. Die Dienste wechseln fair im Kreis: Ein Dienst, den pro Tag nur eine Person hat, kommt bei derselben Person erst wieder, wenn alle anderen im Team ihn hatten. Teamleiter werden nicht eingeteilt. Bei Urlaub, Gleittag,
+          Jedes Teammitglied bekommt an jedem Arbeitstag (Mo–Fr) einen Dienst. Wer Wunschdienste hat, bekommt bevorzugt einen davon. Die übrigen Dienste wechseln fair im Kreis: Ein Dienst, den pro Tag nur eine Person hat, kommt bei derselben Person erst wieder, wenn alle anderen im Team ihn hatten. Teamleiter werden nicht eingeteilt. Bei Urlaub, Gleittag,
           Sonderurlaub, Berufsschule oder „Abwesend“ bekommt die Person keinen Dienst, und die Dienste dieses Tages werden unter den Anwesenden neu verteilt. Feiertage werden ausgelassen. Tage, an denen jemand schon einen Dienst hat, bleiben unverändert.
         </p>
       </details>
     </Modal>
+  );
+}
+
+/* Abschnitt im Rotations-Dialog: je ausgewähltem Team eine Liste von Personen (Wunschdienste bzw. Bereitschaft) */
+function RotationPeople({
+  title,
+  note,
+  teams,
+  render,
+  count,
+  dirty,
+  onSave,
+  collapsible,
+}: {
+  title: ReactNode;
+  note: string;
+  teams: string[];
+  render: (team: string) => ReactNode;
+  count?: (team: string) => string;
+  dirty: boolean;
+  onSave: () => Promise<boolean>;
+  collapsible?: boolean;
+}) {
+  const { data, teamColor } = useApp();
+  const [open, setOpen] = useState(!collapsible);
+  const [busy, setBusy] = useState(false);
+  return (
+    <section className={`rot-people ${open ? 'open' : ''}`}>
+      <button type="button" className="rot-people-head" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <Icon name={collapsible ? 'star' : 'users'} />
+        <b>{title}</b>
+        <Icon name="down" className="rot-people-chev" />
+      </button>
+      {open && (
+        <div className="rot-people-body">
+          <small className="muted">{note}</small>
+          {teams.length ? (
+            teams.map((tn) => {
+              const t = data.teams.find((x) => x.name === tn);
+              return (
+                <div key={tn} className="rot-people-team">
+                  <div className="rot-people-team-head">
+                    <span className="dot" style={{ background: t ? teamColor(t) : undefined }} />
+                    <b>{tn}</b>
+                    {count && <small className="muted">{count(tn)}</small>}
+                  </div>
+                  <div className="rot-people-list">{render(tn)}</div>
+                </div>
+              );
+            })
+          ) : (
+            <small className="muted">Bitte zuerst ein Team auswählen.</small>
+          )}
+          {dirty && (
+            <div className="rot-people-save">
+              <small className="muted">Wird beim Erstellen der Rotation automatisch gespeichert.</small>
+              <button
+                type="button"
+                className="btn small"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  await onSave();
+                  setBusy(false);
+                }}
+              >
+                <Icon name="check" />
+                Jetzt speichern
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

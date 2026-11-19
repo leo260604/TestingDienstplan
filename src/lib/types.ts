@@ -50,6 +50,10 @@ export interface TeamSettings {
   selfStandbyIds: string[];
   /** Mindestbesetzung je Wochentag (Index 0 = Montag … 6 = Sonntag); 0 = keine Vorgabe */
   minStaff: number[];
+  /** Wunschdienste je Person für „Rotation automatisch planen“ (Mitarbeiter-ID → Dienstnamen) */
+  dutyFavorites: Record<string, string[]>;
+  /** Wer Bereitschaft macht (Bereitschafts-Rotation); leer = alle Teammitglieder außer der Teamleitung */
+  standbyIds: string[];
 }
 
 export interface Team {

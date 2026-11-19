@@ -21,6 +21,16 @@ export function teamSettings(t?: Team | null): TeamSettings {
     selfDutyIds: ids(v.selfDutyIds),
     selfStandby: mode(v.selfStandby),
     selfStandbyIds: ids(v.selfStandbyIds),
+    dutyFavorites: (() => {
+      const o = v.dutyFavorites && typeof v.dutyFavorites === 'object' && !Array.isArray(v.dutyFavorites) ? v.dutyFavorites : {};
+      const r: Record<string, string[]> = {};
+      Object.entries(o).forEach(([k, list]) => {
+        const l = ids(list).slice(0, 20);
+        if (l.length) r[k] = l;
+      });
+      return r;
+    })(),
+    standbyIds: ids(v.standbyIds),
     minStaff: Array.from({ length: 7 }, (_, i) => {
       const n = Array.isArray(v.minStaff) ? Number(v.minStaff[i]) : 0;
       return Number.isFinite(n) ? Math.max(0, Math.min(99, Math.round(n))) : 0;
@@ -173,6 +183,12 @@ export function autoLeaderFor(t: Team, staff: Person[]): string {
 /** Teamleiter nehmen an keiner automatischen Rotation teil */
 export const rotationMembers = (t: Team, staff: Person[]) =>
   staff.filter((p) => t.memberIds.includes(p.id) && p.role !== 'Teamleiter' && p.id !== t.leaderId);
+
+/** Wer bei der Bereitschafts-Rotation eingeteilt wird: die im Team festgelegten Personen, sonst alle außer der Teamleitung */
+export function standbyRotationMembers(t: Team, staff: Person[]): Person[] {
+  const ids = teamSettings(t).standbyIds.filter((id) => t.memberIds.includes(id));
+  return ids.length ? staff.filter((p) => ids.includes(p.id)) : rotationMembers(t, staff);
+}
 
 export function orderedMembers(t: Team, staff: Person[], order: string[] = []): Person[] {
   const list = staff.filter((p) => t.memberIds.includes(p.id));
