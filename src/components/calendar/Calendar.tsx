@@ -315,7 +315,7 @@ export function Calendar({ area }: { area: Area }) {
     if (!isDuty || noteHost[k] !== a) return null;
     const cnt = notesBy[k].length;
     return (
-      <button type="button" className="note-chip" data-tip={cnt > 1 ? `${cnt} Notizen (keine Teamnotiz)` : 'Notiz (keine Teamnotiz)'} data-notes-open={k} aria-label={`${cnt > 1 ? cnt + ' Notizen' : 'Notiz'} anzeigen`} onClick={(e) => { e.stopPropagation(); setDlg({ t: 'notes', k }); }}>
+      <button type="button" className="note-chip" data-notes-open={k} aria-label={`${cnt > 1 ? cnt + ' Notizen' : 'Notiz'} anzeigen`} onClick={(e) => { e.stopPropagation(); setDlg({ t: 'notes', k }); }}>
         <Icon name="chat" />
         {cnt > 1 && <span>{cnt}</span>}
       </button>
