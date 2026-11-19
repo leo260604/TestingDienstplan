@@ -20,9 +20,11 @@ import {
   standbyTimeTeams,
   TIMED_ABSENCES,
   tRange,
+  entrySeries,
+  sameSeries,
 } from '@/lib/entries';
 import { absenceTeamFor, absenceTeams, canCreateAbsenceFor, entryTeams, manageableTeams, rotationMembers, selfOnly, standbyRotationMembers, teamSettings } from '@/lib/access';
-import { createAbsence, runDutyRotation, runStandbyRotation, saveDuty, saveRotationSettings, saveWorkplace } from '@/server/actions/entries';
+import { createAbsence, deleteEntryRange, runDutyRotation, runStandbyRotation, saveDuty, saveRotationSettings, saveWorkplace } from '@/server/actions/entries';
 import type { Entry } from '@/lib/types';
 
 const today = () => isoDate(new Date());
@@ -52,8 +54,26 @@ export function DutyDialog({ area, preset, onClose }: { area: 'Dienstplan' | 'Be
   const service = services.find((s) => s.id === serviceId);
   const [start, setStart] = useState(edit?.start || service?.start || '');
   const [end, setEnd] = useState(edit?.end || service?.end || '');
-  const [from, setFrom] = useState(edit?.date || preset.date || today());
-  const [to, setTo] = useState(edit?.date || preset.dateTo || preset.date || today());
+  /* Bearbeiten: automatisch der ganze Zeitraum, in dem die Person genau diesen Dienst hat (freie Tage dazwischen zählen mit) */
+  const series = useMemo(() => {
+    if (!edit) return null;
+    const svc = services.find((s) => s.name === edit.shift);
+    return entrySeries(data.entries, edit, (iso) =>
+      sb ? !!svc && 'days' in svc && standbyRestricted(svc as never) && !standbyDayOk(svc as never, iso) : (day(iso).getDay() + 6) % 7 >= prefs.dutyDays || isHoliday(iso),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const [from, setFrom] = useState(series?.from || preset.date || today());
+  const [to, setTo] = useState(series?.to || preset.dateTo || preset.date || today());
+  const inRange = edit ? data.entries.filter((a) => sameSeries(edit)(a) && a.date >= from && a.date <= (to || from)).sort((a, b) => a.date.localeCompare(b.date)) : [];
+  const removeRange = async () => {
+    if (!edit || !inRange.length) return;
+    const what = sb ? (inRange.length === 1 ? 'Bereitschaft' : 'Bereitschaften') : inRange.length === 1 ? 'Dienst' : 'Dienste';
+    const span = `${f.fmtIsoDate(inRange[0].date)}${inRange.length > 1 ? ' – ' + f.fmtIsoDate(inRange[inRange.length - 1].date) : ''}`;
+    if (!(await ask(`${inRange.length} ${what} „${edit.shift}“ von ${edit.employee} (${span}) wirklich löschen?`, 'Löschen'))) return;
+    const r = await run(deleteEntryRange({ id: edit.id, from, to: to || from }), { undo: `${edit.employee} · ${edit.shift} gelöscht`, undoHint: true });
+    if (r.ok) onClose();
+  };
 
   /* Bereitschaft mit festen Wochentagen: andere Tage sind im Kalender ausgegraut (wie bisher) */
   const dayOk = (s: typeof service, iso: string) => !sb || !s || !('days' in s) || !standbyRestricted(s as never) || standbyDayOk(s as never, iso);
@@ -94,7 +114,7 @@ export function DutyDialog({ area, preset, onClose }: { area: 'Dienstplan' | 'Be
     if (!n) return { warn: true, title: 'Im gewählten Zeitraum liegen keine Arbeitstage.', sub: '' };
     return {
       warn: false,
-      title: `${edit ? 'Eintrag ändern' : `${n} ${n === 1 ? 'Eintrag' : 'Einträge'}`} · ${service.name}`,
+      title: `${edit ? (n === 1 ? 'Eintrag ändern' : `${n} Einträge ändern`) : `${n} ${n === 1 ? 'Eintrag' : 'Einträge'}`} · ${service.name}`,
       sub: `${employee} · ${st}–${en}${net} · ${f.fmtIsoDate(from)}${multi ? ' – ' + f.fmtIsoDate(to) : ''}${skip ? ` · ${skip} ${skip === 1 ? 'freier Tag' : 'freie Tage'} ausgelassen` : ''}`,
     };
   }, [employee, service, from, to, start, end, sb, prefs.dutyDays, edit, f]);
@@ -132,7 +152,20 @@ export function DutyDialog({ area, preset, onClose }: { area: 'Dienstplan' | 'Be
       className="duty-modal"
       onClose={onClose}
       onSubmit={submit}
-      footer={<ModalActions onCancel={onClose} okLabel={edit ? 'Speichern' : sb ? 'Bereitschaft einteilen' : 'Dienst einteilen'} />}
+      footer={
+        <ModalActions
+          onCancel={onClose}
+          okLabel={edit ? 'Speichern' : sb ? 'Bereitschaft einteilen' : 'Dienst einteilen'}
+          left={
+            edit && inRange.length ? (
+              <button type="button" className="btn ghost danger-text" onClick={removeRange}>
+                <Icon name="trash" />
+                {inRange.length === 1 ? 'Löschen' : `${inRange.length} ${sb ? 'Bereitschaften' : 'Dienste'} löschen`}
+              </button>
+            ) : undefined
+          }
+        />
+      }
     >
       <div className="te-two">
         <Field label="Team">
@@ -169,7 +202,16 @@ export function DutyDialog({ area, preset, onClose }: { area: 'Dienstplan' | 'Be
           <TimeRange start={start} end={end} onStart={setStart} onEnd={setEnd} />
         </Field>
       )}
-      <Field label="Zeitraum" note={sb && service && standbyRestricted(service as never) ? `„${service.name}“ – eintragbar: ${standbyDaysLabel(service as never)}. Andere Tage sind im Kalender ausgegraut.` : undefined}>
+      <Field
+        label="Zeitraum"
+        note={
+          edit && series && series.count > 1
+            ? `${edit.employee} hat „${edit.shift}“ hier an ${series.count} Tagen (${f.fmtIsoDate(series.from)} – ${f.fmtIsoDate(series.to)}). Speichern ändert, „Löschen“ entfernt alle Einträge im gewählten Zeitraum – für nur einen Tag den Zeitraum verkleinern oder im ⋯-Menü löschen.`
+            : sb && service && standbyRestricted(service as never)
+              ? `„${service.name}“ – eintragbar: ${standbyDaysLabel(service as never)}. Andere Tage sind im Kalender ausgegraut.`
+              : undefined
+        }
+      >
         <DateRange from={from} to={to} onFrom={setFrom} onTo={setTo} allowed={sb && service ? (iso) => dayOk(service, iso) : undefined} />
       </Field>
       <div className={`wp-summary ${summary.warn ? 'warn' : ''}`} aria-live="polite">

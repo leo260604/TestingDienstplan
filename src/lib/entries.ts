@@ -249,3 +249,30 @@ export function standbyGapRanges(entries: Entry[], teamName: string, dates: stri
 }
 
 export { weekStart };
+
+/** Gleicher Dienst bzw. gleiche Bereitschaft derselben Person (für Zeiträume beim Bearbeiten/Löschen) */
+export const sameSeries = (e: Pick<Entry, 'employee' | 'kind' | 'team' | 'shift'>) => (a: Entry) =>
+  a.employee === e.employee && a.kind === e.kind && !a.isAbsence && a.team === e.team && a.shift === e.shift;
+
+/** Zusammenhängender Zeitraum, in dem die Person genau diesen Dienst bzw. diese Bereitschaft hat.
+    Freie Tage (z. B. Wochenende, Feiertag) dazwischen unterbrechen den Zeitraum nicht. */
+export function entrySeries(entries: Entry[], e: Entry, skippable: (iso: string) => boolean): { from: string; to: string; count: number } {
+  const byDate = new Set(entries.filter(sameSeries(e)).map((a) => a.date));
+  let from = e.date,
+    to = e.date;
+  for (const dir of [-1, 1]) {
+    let gap = 0;
+    for (let d = addDays(day(e.date), dir), g = 0; g < 400; g++, d = addDays(d, dir)) {
+      const iso = isoDate(d);
+      if (byDate.has(iso)) {
+        if (dir < 0) from = iso;
+        else to = iso;
+        gap = 0;
+        continue;
+      }
+      if (skippable(iso) && ++gap <= 7) continue;
+      break;
+    }
+  }
+  return { from, to, count: [...byDate].filter((d) => d >= from && d <= to).length };
+}

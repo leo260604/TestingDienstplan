@@ -20,7 +20,7 @@ import {
   canChangeTeamNote,
   teamNoteTeams,
   currentUserTeamNames, standbyRotationMembers, teamSettings } from '@/lib/access';
-import { isVariableStandby, shiftHexColor, standbyDayOk, standbyDaysLabel, standbyRestricted, standbyTimeByName, standbyTimeForTeam, TIMED_ABSENCES } from '@/lib/entries';
+import { isVariableStandby, sameSeries, shiftHexColor, standbyDayOk, standbyDaysLabel, standbyRestricted, standbyTimeByName, standbyTimeForTeam, TIMED_ABSENCES } from '@/lib/entries';
 import { planDutyRotation, planStandbyRotation } from '@/lib/rotation';
 import type { Ctx, Entry } from '@/lib/types';
 
@@ -115,15 +115,18 @@ export async function saveDuty(inp: SaveDutyInput): Promise<ActionResult<{ count
       skipped += hol.length;
     }
     if (!dates.length) return fail('Im gewählten Zeitraum liegen keine Arbeitstage.');
-    if (orig && dates.length > 1) return fail('Beim Bearbeiten bitte nur einen Tag wählen.');
     const variable = sb && isVariableStandby(service as never);
     const start = inp.start || (variable ? '' : service.start);
     const end = inp.end || (variable ? '' : service.end);
     if (!T.test(start) || !T.test(end)) return fail(variable ? `${service.name} ist eine variable Bereitschaft – bitte Beginn und Ende eingeben.` : 'Bitte Beginn und Ende festlegen.');
     if (start === end) return fail('Beginn und Ende dürfen nicht gleich sein.');
     if (sb && !standbyTimeForTeam(service as never, team.name, c.data.teams)) return fail(`„${service.name}“ ist für ${team.name} nicht freigegeben.`);
+    /* Bearbeiten: alle Einträge desselben Dienstes dieser Person im gewählten Zeitraum werden geändert */
+    const replace = orig ? c.data.entries.filter((a) => a.id === orig.id || (sameSeries(orig)(a) && a.date >= inp.from && a.date <= inp.to)) : [];
+    if (replace.some((a) => !mayChangeEntry(c, a))) return fail('Du darfst nicht alle Einträge in diesem Zeitraum bearbeiten.');
+    const replaceIds = new Set(replace.map((a) => a.id));
     for (const date of dates) {
-      const dup = c.data.entries.some((a) => a.employee === person.name && a.date === date && a.id !== inp.editId && a.kind === inp.area && !a.isAbsence);
+      const dup = c.data.entries.some((a) => a.employee === person.name && a.date === date && !replaceIds.has(a.id) && a.kind === inp.area && !a.isAbsence);
       if (dup) return fail(`${person.name} hat am ${F.fmtIsoDate(date)} bereits ${sb ? 'eine Bereitschaft' : 'einen Dienst'}.`);
     }
     const group = sb ? c.data.standbyGroups.find((g) => g.id === (service as { groupId?: string }).groupId) : null;
@@ -131,9 +134,22 @@ export async function saveDuty(inp: SaveDutyInput): Promise<ActionResult<{ count
     const items: Entry[] = dates.map((date) => ({ id: '', kind: inp.area, team: team.name, employee: person.name, shift: service.name, groupId: group?.id || '', groupName: group?.name || '', start, end, color, date }));
     const detail = `${person.name} · ${service.name} ${start}–${end} · ${F.fmtIsoDate(dates[0])}${dates.length > 1 ? ' – ' + F.fmtIsoDate(dates[dates.length - 1]) + ' (' + dates.length + ' Tage)' : ''}`;
     if (orig) {
-      await prisma.entry.update({ where: { id: orig.id }, data: entryData(c, { ...items[0], id: orig.id }) });
+      // bestehende Einträge im Zeitraum ändern (IDs bleiben erhalten), fehlende Tage ergänzen, übrige entfernen
+      const pool = [...replace].sort((a, b) => (a.id === orig.id ? -1 : b.id === orig.id ? 1 : 0));
+      const used = new Set<string>();
+      const fresh: Entry[] = [];
+      for (const it of items) {
+        const hit = pool.find((a) => !used.has(a.id) && a.date === it.date) || (dates.length === 1 ? pool.find((a) => !used.has(a.id)) : undefined);
+        if (hit) {
+          used.add(hit.id);
+          await prisma.entry.update({ where: { id: hit.id }, data: entryData(c, { ...it, id: hit.id }) });
+        } else fresh.push(it);
+      }
+      if (fresh.length) await insertEntries(c, fresh);
+      const drop = pool.filter((a) => !used.has(a.id)).map((a) => a.id);
+      if (drop.length) await prisma.entry.deleteMany({ where: { id: { in: drop } } });
       await audit(c, 'Geändert', inp.area, detail);
-      return ok('Eintrag wurde aktualisiert.', { count: 1, skipped: 0 });
+      return ok(items.length === 1 ? 'Eintrag wurde aktualisiert.' : `${items.length} Einträge wurden aktualisiert${skipped ? ` (${skipped} ${skipped === 1 ? 'freier Tag' : 'freie Tage'} ausgelassen)` : ''}.`, { count: items.length, skipped });
     }
     const created = await insertEntries(c, items);
     await audit(c, 'Erstellt', inp.area, detail);
@@ -509,5 +525,25 @@ export async function saveRotationSettings(inp: { team: string; area: 'Dienstpla
     await prisma.team.update({ where: { id: t.id }, data: { settings: next as never } });
     await audit(c, 'Geändert', inp.area, `${t.name}: ${changes.join(' · ')}`, { title: inp.area === 'Bereitschaft' ? 'Bereitschaftspersonen festgelegt' : 'Wunschdienste festgelegt', object: t.name });
     return ok(inp.area === 'Bereitschaft' ? `Bereitschaftspersonen für ${t.name} gespeichert.` : `Wunschdienste für ${t.name} gespeichert.`);
+  });
+}
+
+/* ---------------- Zeitraum löschen (Bearbeiten-Dialog) ---------------- */
+export async function deleteEntryRange(inp: { id: string; from: string; to: string }): Promise<ActionResult<{ count: number }>> {
+  return withCtx(async (c) => {
+    const orig = c.data.entries.find((a) => a.id === inp.id);
+    if (!orig) return fail('Der Eintrag wurde nicht gefunden.');
+    if (!validDateInput(inp.from) || !validDateInput(inp.to) || inp.to < inp.from) return fail(DATE_RANGE_MSG);
+    const items = c.data.entries.filter((a) => sameSeries(orig)(a) && a.date >= inp.from && a.date <= inp.to).sort((a, b) => a.date.localeCompare(b.date));
+    if (!items.length) return fail('Im gewählten Zeitraum gibt es keine passenden Einträge.');
+    if (items.some((a) => !mayChangeEntry(c, a))) return fail('Du darfst Einträge dieses Teams nicht löschen.');
+    await prisma.entry.deleteMany({ where: { id: { in: items.map((a) => a.id) } } });
+    const sb = orig.kind === 'Bereitschaft';
+    const range = `${F.fmtIsoDate(items[0].date)}${items.length > 1 ? ' – ' + F.fmtIsoDate(items[items.length - 1].date) : ''}`;
+    const owner = c.data.staff.find((p) => p.name === orig.employee);
+    if (owner && owner.id !== c.user.id)
+      await dispatchExternal([{ recipientId: owner.id, event: 'changedEntry', title: sb ? 'Bereitschaft gelöscht' : 'Dienst gelöscht', message: `${orig.shift} · ${range} (${items.length} ${items.length === 1 ? 'Tag' : 'Tage'}) · gelöscht von ${c.user.name}`, link: `/${sb ? 'bereitschaft' : 'dienstplan'}?date=${items[0].date}` }]);
+    await audit(c, 'Gelöscht', sb ? 'Bereitschaft' : 'Dienstplan', `${orig.employee} · ${orig.shift} · ${range} · ${items.length} ${items.length === 1 ? 'Eintrag' : 'Einträge'}`, { title: sb ? 'Bereitschaften gelöscht' : 'Dienste gelöscht', object: orig.employee });
+    return ok(`${items.length} ${sb ? (items.length === 1 ? 'Bereitschaft' : 'Bereitschaften') : items.length === 1 ? 'Dienst' : 'Dienste'} gelöscht.`, { count: items.length });
   });
 }
