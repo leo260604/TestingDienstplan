@@ -12,3 +12,20 @@ export function normalizeUrl(raw: string): string | null {
     return null;
   }
 }
+
+/** Rücksprungziel nach dem Login: nur Pfade innerhalb der App (auch aus alten, absoluten Links wie https://localhost:3001/…) */
+export function safeCallbackPath(raw?: string | null, fallback = '/dashboard'): string {
+  const s = String(raw || '').trim();
+  if (!s) return fallback;
+  let path = s;
+  if (!s.startsWith('/')) {
+    try {
+      const u = new URL(s);
+      path = u.pathname + u.search;
+    } catch {
+      return fallback;
+    }
+  }
+  if (!path.startsWith('/') || path.startsWith('//') || path.includes('\\') || /^\/(login|api)(\/|\?|$)/.test(path) || path.length > 500) return fallback;
+  return path === '/' ? fallback : path;
+}

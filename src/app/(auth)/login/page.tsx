@@ -5,12 +5,14 @@ import { prisma } from '@/server/db';
 import { isoDate } from '@/lib/dates';
 import { isoToDate } from '@/server/mappers';
 import { LoginScreen } from './LoginScreen';
+import { safeCallbackPath } from '@/lib/url';
 
 export const dynamic = 'force-dynamic';
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  if (await getCurrentUser()) redirect('/dashboard');
-  const { error } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; callbackUrl?: string }> }) {
+  const { error, callbackUrl } = await searchParams;
+  const next = safeCallbackPath(callbackUrl);
+  if (await getCurrentUser()) redirect(next);
   const demo = demoLoginEnabled();
   const [teams, staffCount, users, today] = await Promise.all([
     prisma.team.findMany({ include: { members: true }, orderBy: { sortOrder: 'asc' } }),
@@ -23,6 +25,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <LoginScreen
       demo={demo}
+      next={next}
       sso={entraEnabled()}
       error={error === 'unknown-account' ? 'Dieses Microsoft-Konto ist keinem Mitarbeiter zugeordnet.' : error ? 'Die Anmeldung ist fehlgeschlagen.' : ''}
       stats={`${teams.length} Teams · ${staffCount} Mitarbeiter · alle Schichten auf einen Blick.`}

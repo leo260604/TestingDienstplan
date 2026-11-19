@@ -1,5 +1,9 @@
 import type { NextConfig } from 'next';
 
+/* Interne Weiterleitungen nach Server-Aktionen (Login/Logout) direkt über 127.0.0.1 statt über den Hostnamen
+   des Proxys – auf dem Server ist „localhost“ nicht auflösbar (Log: „failed to get redirect response … ENOTFOUND localhost“). */
+if (process.env.NODE_ENV === 'production' && !process.env.__NEXT_PRIVATE_ORIGIN) process.env.__NEXT_PRIVATE_ORIGIN = `http://127.0.0.1:${process.env.PORT || 3000}`;
+
 const nextConfig: NextConfig = {
   // Eigenständiges Server-Bundle für das Docker-Image
   output: 'standalone',

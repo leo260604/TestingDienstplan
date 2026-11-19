@@ -24,7 +24,7 @@ const Av = ({ u, size }: { u: LoginUser; size: number }) => (
   </span>
 );
 
-export function LoginScreen({ demo, sso, error, stats, heroDuty, heroStandby, users }: { demo: boolean; sso: boolean; error: string; stats: string; heroDuty: { title: string; sub: string } | null; heroStandby: { title: string; sub: string } | null; users: LoginUser[] }) {
+export function LoginScreen({ demo, next = '/dashboard', sso, error, stats, heroDuty, heroStandby, users }: { demo: boolean; next?: string; sso: boolean; error: string; stats: string; heroDuty: { title: string; sub: string } | null; heroStandby: { title: string; sub: string } | null; users: LoginUser[] }) {
   // Nach dem Abmelden keinen persönlichen Plan mehr offline auf dem Gerät lassen
   useEffect(() => {
     try {
@@ -43,7 +43,7 @@ export function LoginScreen({ demo, sso, error, stats, heroDuty, heroStandby, us
   const current = users.find((u) => u.id === sel);
   const submitDemo = (id = sel) =>
     start(async () => {
-      const r = await loginDemo(id);
+      const r = await loginDemo(id, next);
       if (r) setMsg(r);
     });
 
@@ -99,7 +99,7 @@ export function LoginScreen({ demo, sso, error, stats, heroDuty, heroStandby, us
           )}
           {sso && (
             <div className="sso-block">
-              <button className={`sso-btn ${pending ? 'busy' : ''}`} type="button" disabled={pending} onClick={() => start(() => loginMicrosoft())}>
+              <button className={`sso-btn ${pending ? 'busy' : ''}`} type="button" disabled={pending} onClick={() => start(() => loginMicrosoft(next))}>
                 <span className="ms-logo" aria-hidden="true">
                   <i />
                   <i />
@@ -115,7 +115,7 @@ export function LoginScreen({ demo, sso, error, stats, heroDuty, heroStandby, us
             onSubmit={(e) => {
               e.preventDefault();
               start(async () => {
-                const r = await loginPassword(email, password);
+                const r = await loginPassword(email, password, next);
                 if (r) setMsg(r);
               });
             }}
